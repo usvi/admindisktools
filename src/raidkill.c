@@ -9,10 +9,10 @@
 
 
 
-#define ADT_DC_VERSION_STR "Diskcont v. 1.02 by Janne Paalijarvi\n"
-#define ADT_DC_RUNNING_NUM_SIZE_BYTES ((uint64_t)(8))
-#define ADT_DC_PROGRESS_UPDATE_INTERVAL ((uint32_t)(5))
-#define ADT_DC_DEFAULT_BUF_SIZE (((uint32_t)(100)) * ADT_BYTES_IN_MEBIBYTE)
+#define ADT_RK_VERSION_STR "Raidkill v. 1.00 by Janne Paalijarvi\n"
+// Different vendors have different metadata handling, so we need
+// to just guess something for the kill buffer size.
+#define ADT_RK_KILL_BUF_SIZE ((uint32_t)((ADT_BYTES_IN_MEBIBYTE) / 2))
 
 
 
@@ -39,7 +39,7 @@ static uint8_t bDC_GetParams(int argc, char* argv[], tDcState* pxState)
   pxState->u8Silent = 0;
   pxState->u8Write = 1;
   pxState->u8Read = 1;
-  pxState->u32BufSize = ADT_DC_DEFAULT_BUF_SIZE;
+  pxState->u32BufSize = ADT_RK_KILL_BUF_SIZE;
 
   memset(pxState->sDevice, 0, ADT_GEN_BUF_SIZE);
 
@@ -97,109 +97,21 @@ static uint8_t bDC_GetParams(int argc, char* argv[], tDcState* pxState)
 
 
 
-static void DC_PrepareBuffer(void* pBufMem,
-			     uint64_t u64AvailBufSizeBytes,
-			     uint64_t u64DataLeftBytes,
-			     uint64_t u64StartNumber,
-			     uint64_t* pu64UsedDataBytes,
-			     uint64_t* pu64UsedNumbers)
+
+
+
+
+
+
+static uint8_t bRK_ReadRaid(tDcState* pxState)
 {
-  // Staticed here just for efficiency
-  static uint64_t u64BytesToWrite;
-  static uint64_t u64NumNumbers;
-  static uint64_t u64LeftoverBytes;
-  static uint64_t u64WriteNum;
-  static void* pMemUpperBound;
-  
-  memset(pBufMem, 0, u64AvailBufSizeBytes);
-  // Pick smaller amount of full buffer and data left
-  u64BytesToWrite = ((u64AvailBufSizeBytes < u64DataLeftBytes) ? u64AvailBufSizeBytes : u64DataLeftBytes);
-  u64NumNumbers = u64BytesToWrite / ADT_DC_RUNNING_NUM_SIZE_BYTES;
-  u64LeftoverBytes = u64BytesToWrite % ADT_DC_RUNNING_NUM_SIZE_BYTES;
-  pMemUpperBound = pBufMem + (u64NumNumbers * ADT_DC_RUNNING_NUM_SIZE_BYTES);
-  u64WriteNum = u64StartNumber;
-
-  while (pBufMem < pMemUpperBound)
-  {
-    memcpy(pBufMem, &u64WriteNum, ADT_DC_RUNNING_NUM_SIZE_BYTES);
-    u64WriteNum++;
-    pBufMem += ADT_DC_RUNNING_NUM_SIZE_BYTES;
-  }
-  if (u64LeftoverBytes)
-  {
-    memcpy(pBufMem, &u64WriteNum, u64LeftoverBytes);
-    u64WriteNum++;
-  }
-  *pu64UsedDataBytes = u64BytesToWrite;
-  *pu64UsedNumbers = u64WriteNum - u64StartNumber;
-}
-
-
-
-static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
-			     uint64_t u64NowDataBytesLeft,
-			     uint64_t u64DevSizeBytes,
-			     struct timeval* pxStartTime,
-			     struct timeval* pxLastTime,
-			     struct timeval* pxNowTime)
-{
-  // Staticed here just for efficiency
-  static uint32_t u32TimeElapsed;
-  static uint32_t u32Secs;
-  static uint32_t u32Mins;
-  static uint32_t u32Hours;
-  static uint64_t u64PassedBytes;
-  static float fProgress;
-  static float fTimeElapsedFine;
-  static float fSpeedMbPerSeconds;
-  
-  u32TimeElapsed = pxNowTime->tv_sec - pxStartTime->tv_sec;
-  u32Secs = u32TimeElapsed % 60;
-  u32TimeElapsed -= u32Secs;
-  u32Mins = (u32TimeElapsed % 3600) / 60;
-  u32TimeElapsed -= u32Mins * 60;
-  u32Hours = u32TimeElapsed / 3600;
-  u64PassedBytes = u64DevSizeBytes - u64NowDataBytesLeft;
-  fProgress = 100.0 * (1.0 * u64PassedBytes) / (1.0 * u64DevSizeBytes);
-
-  // For calculations we need fine-grained stuff.
-  fSpeedMbPerSeconds = 0.0;
-  
-  if (timercmp(pxLastTime, pxNowTime, <) && (u64LastDataBytesLeft))
-  {
-    fTimeElapsedFine = (1.0 * (pxNowTime->tv_sec - pxLastTime->tv_sec)) + (0.000001 * (pxNowTime->tv_usec - pxLastTime->tv_usec));
-    fSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
-  }
-
-  printf("\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. "
-	 "%uh %02um %02us elapsed. Speed now: %.2f MiB/s         \r",
-	 u64PassedBytes, u64DevSizeBytes, fProgress,
-	 u32Hours, u32Mins, u32Secs, fSpeedMbPerSeconds);
-  fflush(stdout);
-}
-
-
-
-static uint8_t bDC_ReadTest(tDcState* pxState)
-{
+  // And how to check we have succeeded?
+  // Read back buffer amount.
   void* pCompBufMem = NULL;
   void* pReadBufMem = NULL;
   int iFd = -1;
-  struct timeval xStartTime;
-  struct timeval xLastTime;
-  struct timeval xNowTime;
-  uint64_t u64DataLeftBytes = pxState->u64DevSizeBytes;
-  uint64_t u64LastDataLeftBytes = 0;
-  uint64_t u64ReadNumber = 0;
-  uint64_t u64BufferUsedDataBytes = 0;
-  uint64_t u64BufferUsedNumbers = 0;
-  uint64_t u64ReadCallBytes = 0;
-
-  // No return value checking for performance purposes
-  gettimeofday(&xStartTime, NULL);
-  gettimeofday(&xLastTime, NULL);
-  xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
-  
+  int iCompBeginResult = 0;
+  int iCompEndResult = 0;
   
   pCompBufMem = malloc(pxState->u32BufSize);
 
@@ -220,7 +132,6 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
     return 0;
   }
   
-  //iFd = open(pxState->sDevice, O_RDONLY | O_SYNC);
   iFd = open(pxState->sDevice, O_RDONLY);
 
   if (iFd == -1)
@@ -231,85 +142,72 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
     return 0;
   }
+  // Make two reads and compare later
 
-  // In loop prepare the buffer, read and compare
-  while (u64DataLeftBytes)
+  // Beginning
+  if ((lseek(iFd, 0, SEEK_SET) == -1) ||
+      (read(iFd, pReadBufMem, pxState->u32BufSize) != pxState->u32BufSize))
   {
-    DC_PrepareBuffer(pCompBufMem, pxState->u32BufSize,
-		     u64DataLeftBytes,
-		     u64ReadNumber,
-		     &u64BufferUsedDataBytes,
-		     &u64BufferUsedNumbers);
-    
-    u64ReadCallBytes = read(iFd, pReadBufMem, u64BufferUsedDataBytes);
-  
-    if (u64ReadCallBytes != u64BufferUsedDataBytes)
-    {
-      printf("Error: Problem reading bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - u64DataLeftBytes));
-      free(pCompBufMem);
-      free(pReadBufMem);
-      close(iFd);
-    
-      return 0;
-    }
-    // Compare buffers
-    if (memcmp(pCompBufMem, pReadBufMem, u64BufferUsedDataBytes) != 0)
-    {
-      // TODO: Find out which byte exactly.
-      printf("\nError: Comparing failed at block beginning at %" PRIu64 "\n",
-	     (pxState->u64DevSizeBytes - u64DataLeftBytes));
-      free(pCompBufMem);
-      free(pReadBufMem);
-      close(iFd);
-    
-      return 0;
-    }
-    u64DataLeftBytes -= u64BufferUsedDataBytes;
-    u64ReadNumber += u64BufferUsedNumbers;
+    printf("Error: Unable to read from the beginning\n");
+    free(pCompBufMem);
+    free(pReadBufMem);
+    close(iFd);
 
-    // Write where we are, if interval seconds passed
-    gettimeofday(&xNowTime, NULL);
-
-    if ((xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
-    {
-      DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		       &xStartTime, &xLastTime, &xNowTime);
-      u64LastDataLeftBytes = u64DataLeftBytes;
-      xLastTime = xNowTime;
-    }
+    return 1;
   }
-  gettimeofday(&xNowTime, NULL);
-  DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		   &xStartTime, &xLastTime, &xNowTime);
-  printf("\nDone reading, compare OK!\n");
-  
+  iCompBeginResult = memcmp(pCompBufMem, pReadBufMem, pxState->u32BufSize);
+
+  // And end
+  if ((lseek(iFd, (0 - pxState->u32BufSize), SEEK_END) == -1) ||
+      (read(iFd, pReadBufMem, pxState->u32BufSize) != pxState->u32BufSize))
+  {
+    printf("Error: Unable to read from the end\n");
+    free(pCompBufMem);
+    free(pReadBufMem);
+    close(iFd);
+
+    return 1;
+  }
+  iCompEndResult = memcmp(pCompBufMem, pReadBufMem, pxState->u32BufSize);
+
+  // We can already close our stuff
   free(pCompBufMem);
   free(pReadBufMem);
   close(iFd);
+
+  if (iCompBeginResult != 0)
+  {
+    printf("Compare failed for beginning\n");
+  }
+  if (iCompEndResult != 0)
+  {
+    printf("Compare failed for end\n");
+  }
+
+  if ((iCompBeginResult != 0) || (iCompEndResult != 0))
+  {
+    printf("Raid might still be active!\n");
+
+    return 0;
+  }
+  // else
+  printf("Raid successfully verified killed\n");
 
   return 1;
 }
 
 
 
-static uint8_t bDC_WriteTest(tDcState* pxState)
+
+static uint8_t bRK_KillRaid(tDcState* pxState)
 {
+  // Various vendors have different specifications for RAID, some
+  // write some amount of metadata to the end and some write it
+  // to the beginning. We need to erase both areas with a kill
+  // buffer. The size defined at the beginning of file.
   void* pBufMem = NULL;
   int iFd = -1;
-  struct timeval xStartTime;
-  struct timeval xLastTime;
-  struct timeval xNowTime;
-  uint64_t u64DataLeftBytes = pxState->u64DevSizeBytes;
-  uint64_t u64LastDataLeftBytes = 0;
-  uint64_t u64WriteNumber = 0;
-  uint64_t u64BufferUsedDataBytes = 0;
-  uint64_t u64BufferUsedNumbers = 0;
-  uint64_t u64WrittenCallBytes = 0;
 
-  gettimeofday(&xStartTime, NULL);
-  gettimeofday(&xLastTime, NULL);
-  xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
-  
   pBufMem = malloc(pxState->u32BufSize);
 
   if (pBufMem == NULL)
@@ -318,8 +216,6 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
     
     return 0;
   }
-  // FIXME: Correct additional flags
-  //iFd = open(pxState->sDevice, O_WRONLY | O_SYNC);
   iFd = open(pxState->sDevice, O_WRONLY);
 
   if (iFd == -1)
@@ -330,48 +226,36 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
     return 0;
   }
 
-  // In loop prepare the buffer and write
-  while (u64DataLeftBytes)
+  // Seek, write and flush the beginning
+  if ((lseek(iFd, 0, SEEK_SET) == -1) ||
+      (write(iFd, pBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
+      (fsync(iFd) == -1))
   {
-    DC_PrepareBuffer(pBufMem, pxState->u32BufSize,
-		     u64DataLeftBytes,
-		     u64WriteNumber,
-		     &u64BufferUsedDataBytes,
-		     &u64BufferUsedNumbers);
-    
-    u64WrittenCallBytes = write(iFd, pBufMem, u64BufferUsedDataBytes);
-  
-    if (u64WrittenCallBytes != u64BufferUsedDataBytes)
-    {
-      printf("Error: Problem writing bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - u64DataLeftBytes));
-      free(pBufMem);
-      close(iFd);
-    
-      return 0;
-    }
-    u64DataLeftBytes -= u64BufferUsedDataBytes;
-    u64WriteNumber += u64BufferUsedNumbers;
+    printf("Error: Unable to write to the beginning\n");
+    free(pBufMem);
+    close(iFd);
 
-    // Write where we are, if interval seconds passed
-    gettimeofday(&xNowTime, NULL);
-
-    if ((xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
-    {
-      DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		       &xStartTime, &xLastTime, &xNowTime);
-      u64LastDataLeftBytes = u64DataLeftBytes;
-      xLastTime = xNowTime;
-    }
+    return 0;
   }
-  gettimeofday(&xNowTime, NULL);
-  DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		   &xStartTime, &xLastTime, &xNowTime);
-  printf("\nSyncinc...\n");
-  fsync(iFd);
-  printf("Done all writing!\n");
-  
+  printf("Wrote %u bytes to the beginning\n", pxState->u32BufSize);
+
+  // Seek, write and flush the end
+  if ((lseek(iFd, (0 - pxState->u32BufSize), SEEK_END) == -1) ||
+      (write(iFd, pBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
+      (fsync(iFd) == -1))
+  {
+    printf("Error: Unable to write to the end\n");
+    free(pBufMem);
+    close(iFd);
+
+    return 0;
+  }
+  // We can already release these
   free(pBufMem);
   close(iFd);
+
+  printf("Wrote %u bytes to the beginning\n", pxState->u32BufSize);
+  printf("Successfully wrote raid kill buffers\n");
 
   return 1;
 }
@@ -388,7 +272,7 @@ int main(int argc, char* argv[])
   char sModel[ADT_DISK_INFO_MODEL_LEN + 1] = { 0 };
   char sSerial[ADT_DISK_INFO_SERIAL_LEN + 1] = { 0 };
   
-  printf(ADT_DC_VERSION_STR);
+  printf(ADT_RK_VERSION_STR);
   
   if (!bDC_GetParams(argc, argv, &xState))
   {
@@ -423,7 +307,8 @@ int main(int argc, char* argv[])
     // Write test
     if (!xState.u8Silent)
     {
-      printf("This write test will COMPLETELY WIPE OUT %s\n", xState.sDevice);
+      printf("This command will COMPLETELY WIPE OUT RAID\n");
+      printf("remnants on %s\n", xState.sDevice);
       printf("To continue, type uppercase yes\n");
       fgets(sReadBuf, sizeof(sReadBuf), stdin);
 
@@ -434,14 +319,14 @@ int main(int argc, char* argv[])
 	return 1;
       }
     }
-    if (!bDC_WriteTest(&xState))
+    if (!bRK_KillRaid(&xState))
     {
       return 1;
     }
   }
   if (xState.u8Read)
   {
-    if (!bDC_ReadTest(&xState))
+    if (!bRK_ReadRaid(&xState))
     {
       return 1;
     }
