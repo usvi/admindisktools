@@ -178,8 +178,6 @@ void ADT_BytesToHumanReadable(uint64_t u64SizeBytes,
   else
   {
     // Still tebibytes
-    printf("In tebi %" PRIu64 "   %" PRIu64 "\n",
-	   u64SizeBytes, ADT_BYTES_IN_TEBIBYTE);
     fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_TEBIBYTE);
     snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f TiB", fSize);
   }
