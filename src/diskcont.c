@@ -3,24 +3,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <inttypes.h>
-#include <sys/ioctl.h>
-#include <linux/fs.h>
-#include <time.h>
 #include <sys/time.h>
-#include <linux/hdreg.h>
 
 
-
-// gcc -D_FILE_OFFSET_BITS=64 -Wall -o diskcont diskcont.c
 
 #define ADT_DC_VERSION_STR "Diskcont v. 1.02 by Janne Paalijarvi\n"
 #define ADT_DC_RUNNING_NUM_SIZE_BYTES ((uint64_t)(8))
 #define ADT_DC_PROGRESS_UPDATE_INTERVAL ((uint32_t)(5))
 #define ADT_DC_DEFAULT_BUF_SIZE (((uint32_t)(100)) * ADT_BYTES_IN_MEBIBYTE)
+
+
 
 typedef struct
 {
@@ -384,8 +378,6 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
 
 
-
-
 int main(int argc, char* argv[])
 {
   int iFd = -1;
@@ -414,7 +406,6 @@ int main(int argc, char* argv[])
     return 1;
   }
   bADT_IdentifyDisk(iFd, sModel, sSerial, NULL, &(xState.u64DevSizeBytes));
-  iTemp = ioctl(iFd, BLKGETSIZE64, &(xState.u64DevSizeBytes));
   close(iFd);
 
   if (iTemp == -1)
