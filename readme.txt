@@ -2,7 +2,8 @@ Various small C programs for administrating disks on your system.
 Strong pre-alpha quality. If you unwantingly destroy your data
 with these, its not my fault.
 
-Programs:
+
+
 
 
 diskcont
@@ -28,6 +29,8 @@ diskcont -w -s /dev/sdx
 
 
 
+
+
 diskinfo
 Reads disk information: model, serial, firmware and size.
 
@@ -37,6 +40,8 @@ diskinfo /path/to/disk
 Examples:
 Read information of /dev/sdb:
 diskinfo /dev/sdb
+
+
 
 
 
