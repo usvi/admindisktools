@@ -9,7 +9,7 @@
 
 #include <errno.h>
 
-#define ADT_RK_VERSION_STR "Raidkill v. 1.01 by Janne Paalijarvi\n"
+#define ADT_RK_VERSION_STR "Raidkill v. 1.02 by Janne Paalijarvi\n"
 // Different vendors have different metadata handling, so we need
 // to just guess something for the kill buffer size.
 #define ADT_RK_KILL_BUF_SIZE ((uint32_t)((ADT_BYTES_IN_MEBIBYTE) / 2))
@@ -254,7 +254,7 @@ static uint8_t bRK_KillRaid(tDcState* pxState)
   free(pBufMem);
   close(iFd);
 
-  printf("Wrote %u bytes to the beginning\n", pxState->u32BufSize);
+  printf("Wrote %u bytes to the end\n", pxState->u32BufSize);
   printf("Successfully wrote raid kill buffers\n");
 
   return 1;
