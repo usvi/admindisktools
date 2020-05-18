@@ -7,9 +7,9 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+#include <errno.h>
 
-
-#define ADT_RK_VERSION_STR "Raidkill v. 1.00 by Janne Paalijarvi\n"
+#define ADT_RK_VERSION_STR "Raidkill v. 1.01 by Janne Paalijarvi\n"
 // Different vendors have different metadata handling, so we need
 // to just guess something for the kill buffer size.
 #define ADT_RK_KILL_BUF_SIZE ((uint32_t)((ADT_BYTES_IN_MEBIBYTE) / 2))
@@ -158,7 +158,7 @@ static uint8_t bRK_ReadRaid(tDcState* pxState)
   iCompBeginResult = memcmp(pCompBufMem, pReadBufMem, pxState->u32BufSize);
 
   // And end
-  if ((lseek(iFd, (0 - pxState->u32BufSize), SEEK_END) == -1) ||
+  if ((lseek(iFd, (pxState->u64DevSizeBytes - pxState->u32BufSize), SEEK_SET) == -1) ||
       (read(iFd, pReadBufMem, pxState->u32BufSize) != pxState->u32BufSize))
   {
     printf("Error: Unable to read from the end\n");
@@ -240,7 +240,7 @@ static uint8_t bRK_KillRaid(tDcState* pxState)
   printf("Wrote %u bytes to the beginning\n", pxState->u32BufSize);
 
   // Seek, write and flush the end
-  if ((lseek(iFd, (0 - pxState->u32BufSize), SEEK_END) == -1) ||
+  if ((lseek(iFd, (pxState->u64DevSizeBytes - pxState->u32BufSize), SEEK_SET) == -1) ||
       (write(iFd, pBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
       (fsync(iFd) == -1))
   {
