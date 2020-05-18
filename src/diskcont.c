@@ -401,7 +401,7 @@ int main(int argc, char* argv[])
 
   if (iFd == -1)
   {
-    printf("Error: Unable to open device %s (are you root?)\n", xState.sDevice);
+    printf("Error: Unable to open device %s (are you not root?)\n", xState.sDevice);
     
     return 1;
   }
