@@ -10,20 +10,20 @@
 void ADT_TrimBegin(char* sParamString)
 {
   uint32_t i;
-  uint64_t u64Len = strlen(sParamString);
+  uint32_t u32Len = strlen(sParamString);
 
-  if (u64Len <= 1)
+  if (u32Len <= 1)
   {
     return;
   }
 
-  for (i = 0; i < u64Len; i++)
+  for (i = 0; i < u32Len; i++)
   {
     if (sParamString[0] == ' ')
     {
       // Memmove left 1 byte and axe the last byte
-      memmove(sParamString, (sParamString + 1), (u64Len - 1 - i));
-      sParamString[u64Len - 1 - i] = 0;
+      memmove(sParamString, (sParamString + 1), (u32Len - 1 - i));
+      sParamString[u32Len - 1 - i] = 0;
     }
     else
     {
@@ -35,14 +35,14 @@ void ADT_TrimBegin(char* sParamString)
 void ADT_TrimEnd(char* sParamString)
 {
   uint32_t i;
-  uint64_t u64Len = strlen(sParamString);
+  uint32_t u32Len = strlen(sParamString);
 
-  if (u64Len <= 1)
+  if (u32Len <= 1)
   {
     return;
   }
 
-  for (i = (u64Len - 1); i > 0; i--)
+  for (i = (u32Len - 1); i > 0; i--)
   {
     if (sParamString[i] == ' ')
     {
