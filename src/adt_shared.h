@@ -6,8 +6,8 @@
 #define ADT_GEN_BUF_SIZE ((uint32_t)2000)
 
 #define ADT_BYTES_IN_KIBIBYTE ((uint32_t)1024)
-#define ADT_KIBIBYTES_IN_MEBIBYTE ((uint32_t)1024)
-#define ADT_BYTES_IN_MEBIBYTE ((uint32_t)((ADT_KIBIBYTES_IN_MEBIBYTE) * (ADT_BYTES_IN_KIBIBYTE)))
+#define ADT_BYTES_IN_MEBIBYTE (((uint32_t)1024)*(ADT_BYTES_IN_KIBIBYTE))
+#define ADT_BYTES_IN_TEBIBYTE (((uint32_t)1024)*(ADT_BYTES_IN_MEBIBYTE))
 
 
 #define ADT_DISK_RAW_INFO_IOCTL_SIZE ((uint16_t)256)
@@ -24,5 +24,8 @@ void ADT_StripEnd(char* sParamString);
 uint8_t bADT_IdentifyDisk(int iFd, char* sModel,
                           char* sSerial, char* sFirmware,
                           uint64_t* pu64SizeBytes);
+
+void ADT_BytesToHumanReadable(uint64_t u64SizeBytes,
+			      char* sHumanReadable);
 
 #endif // #define _ADT_SHARED_H_
