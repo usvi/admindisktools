@@ -159,19 +159,27 @@ void ADT_BytesToHumanReadable(uint64_t u64SizeBytes,
   }
   else if (u64SizeBytes < ADT_BYTES_IN_MEBIBYTE)
   {
-    // Kibibytes
+    // Still kibibytes
     fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_KIBIBYTE);
     snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f KiB", fSize);
   }
+  else if (u64SizeBytes < ADT_BYTES_IN_GIBIBYTE)
+  {
+    // Still mebibytes
+    fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_MEBIBYTE);
+    snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f MiB", fSize);
+  }
   else if (u64SizeBytes < ADT_BYTES_IN_TEBIBYTE)
   {
-    // Mebibytes
-    fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_MEBIBYTE);
+    // Still gibibytes
+    fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_GIBIBYTE);
     snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f MiB", fSize);
   }
   else
   {
-    // Tebibytes
+    // Still tebibytes
+    printf("In tebi %" PRIu64 "   %" PRIu64 "\n",
+	   u64SizeBytes, ADT_BYTES_IN_TEBIBYTE);
     fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_TEBIBYTE);
     snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f TiB", fSize);
   }
