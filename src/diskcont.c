@@ -9,6 +9,7 @@
 #include <linux/fs.h>
 #include <time.h>
 #include <sys/time.h>
+#include <linux/hdreg.h>
 
 // gcc -D_FILE_OFFSET_BITS=64 -Wall -o diskcont diskcont.c
 
@@ -22,6 +23,7 @@
 #define DC_BUF_SIZE_COMPLETE (((uint32_t)(100)) * DC_BUF_SIZE_MEBIBYTE)
 
 #define DC_PROGRESS_UPDATE_INTERVAL ((uint32_t)(5))
+
 
 
 typedef struct
@@ -383,6 +385,72 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 }
 
 
+static void ADT_StripEnd(char* sParamString)
+{
+  uint32_t i;
+
+  for (i = strlen(sParamString) - 1; i > 0; i--)
+  {
+    if (sParamString[i] == ' ')
+    {
+      sParamString[i] = 0;
+    }
+    else
+    {
+      break;
+    }
+  }
+}
+
+
+#define ADT_DISK_RAW_INFO_IOCTL_SIZE ((uint16_t)256)
+#define ADT_DISK_INFO_MODEL_SIZE ((uint16_t)40)
+#define ADT_DISK_INFO_MODEL_IOCTL_POS ((uint16_t)27)
+#define ADT_DISK_INFO_SERIAL_SIZE ((uint16_t)20)
+#define ADT_DISK_INFO_SERIAL_IOCTL_POS ((uint16_t)10)
+#define ADT_DISK_INFO_FIRMWARE_SIZE ((uint16_t)8)
+#define ADT_DISK_INFO_FIRMWARE_IOCTL_POS ((uint16_t)23)
+
+
+
+
+static uint8_t bADT_IdentifyDisk(int iFd)
+{
+  uint16_t au16DriveInfoRaw[ADT_DISK_RAW_INFO_IOCTL_SIZE] = { 0 };
+  char sModel[ADT_DISK_INFO_MODEL_SIZE + 1] = { 0 };
+  char sSerial[ADT_DISK_INFO_SERIAL_SIZE + 1] = { 0 };
+  char sFirmware[ADT_DISK_INFO_FIRMWARE_SIZE + 1] = { 0 };
+  
+  if (!ioctl(iFd, HDIO_GET_IDENTITY, au16DriveInfoRaw))
+  {
+    strncpy(sModel, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_MODEL_IOCTL_POS])),
+	    ADT_DISK_INFO_MODEL_SIZE);
+    strncpy(sSerial, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_SERIAL_IOCTL_POS])),
+	    ADT_DISK_INFO_SERIAL_SIZE);
+    strncpy(sFirmware, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_FIRMWARE_IOCTL_POS])),
+	    ADT_DISK_INFO_FIRMWARE_SIZE);
+
+
+    // Strip stuff from end
+    ADT_StripEnd(sModel);
+    ADT_StripEnd(sSerial);
+    ADT_StripEnd(sFirmware);
+
+    printf("Model: >%s<\n", sModel);
+    printf("Serial: >%s<\n", sSerial);
+    printf("Firmware: >%s<\n", sFirmware);
+
+
+    return 1;
+  }
+  else
+  {
+    printf("Could not identify disk!\n");
+  }
+      
+  return 0;
+}
+
 
 
 int main(int argc, char* argv[])
@@ -409,6 +477,7 @@ int main(int argc, char* argv[])
     
     return 1;
   }
+  bADT_IdentifyDisk(iFd);
   iTemp = ioctl(iFd, BLKGETSIZE64, &(xState.u64DevSizeBytes));
   close(iFd);
 
