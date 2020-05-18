@@ -1,5 +1,31 @@
-#include "adt_shared.h"
+#ifndef _ADT_SHARED_H_
+#define _ADT_SHARED_H_
 
+#include <inttypes.h>
+
+#define ADT_GEN_BUF_SIZE ((uint32_t)2000)
+
+#define ADT_BYTES_IN_KIBIBYTE ((uint32_t)1024)
+#define ADT_KIBIBYTES_IN_MEBIBYTE ((uint32_t)1024)
+#define ADT_BYTES_IN_MEBIBYTE ((uint32_t)((ADT_KIBIBYTES_IN_MEBIBYTE) * (ADT_BYTES_IN_KIBIBYTE)))
+
+
+#define ADT_DISK_RAW_INFO_IOCTL_SIZE ((uint16_t)256)
+#define ADT_DISK_INFO_MODEL_LEN ((uint16_t)40)
+#define ADT_DISK_INFO_MODEL_IOCTL_POS ((uint16_t)27)
+#define ADT_DISK_INFO_SERIAL_LEN ((uint16_t)20)
+#define ADT_DISK_INFO_SERIAL_IOCTL_POS ((uint16_t)10)
+#define ADT_DISK_INFO_FIRMWARE_LEN ((uint16_t)8)
+#define ADT_DISK_INFO_FIRMWARE_IOCTL_POS ((uint16_t)23)
+
+
+void ADT_StripEnd(char* sParamString);
+
+uint8_t bADT_IdentifyDisk(int iFd, char* sModel,
+                          char* sSerial, char* sFirmware,
+                          uint64_t* pu64SizeBytes);
+
+/*
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -12,23 +38,28 @@
 #include <time.h>
 #include <sys/time.h>
 #include <linux/hdreg.h>
-
-
-
+*/
 // gcc -D_FILE_OFFSET_BITS=64 -Wall -o diskcont diskcont.c
 
-#define ADT_DC_VERSION_STR "Diskcont v. 1.01 by Janne Paalijarvi\n"
-#define ADT_DC_RUNNING_NUM_SIZE_BYTES ((uint64_t)(8))
-#define ADT_DC_PROGRESS_UPDATE_INTERVAL ((uint32_t)(5))
-#define ADT_DC_DEFAULT_BUF_SIZE (((uint32_t)(100)) * ADT_BYTES_IN_MEBIBYTE)
+/*
+#define DC_VERSION_STR "Diskcont v. 1.01 by Janne Paalijarvi\n"
+
+#define DC_GEN_BUF_SIZE ((uint32_t)(2000))
+#define DC_RUNNING_NUM_SIZE_BYTES ((uint32_t)(8))
+#define DC_BUF_SIZE_KIBIBYTE (((uint32_t)(128)) * DC_RUNNING_NUM_SIZE_BYTES)
+#define DC_BUF_SIZE_MEBIBYTE (((uint32_t)(1024)) * DC_BUF_SIZE_KIBIBYTE)
+#define DC_BUF_SIZE_COMPLETE (((uint32_t)(100)) * DC_BUF_SIZE_MEBIBYTE)
+
+#define DC_PROGRESS_UPDATE_INTERVAL ((uint32_t)(5))
+
+
 
 typedef struct
 {
   uint8_t u8Silent;
   uint8_t u8Write;
   uint8_t u8Read;
-  uint32_t u32BufSize;
-  char sDevice[ADT_GEN_BUF_SIZE];
+  char sDevice[DC_GEN_BUF_SIZE];
   uint64_t u64DevSizeBytes;
   
 } tDcState;
@@ -45,9 +76,8 @@ static uint8_t bDC_GetParams(int argc, char* argv[], tDcState* pxState)
   pxState->u8Silent = 0;
   pxState->u8Write = 1;
   pxState->u8Read = 1;
-  pxState->u32BufSize = ADT_DC_DEFAULT_BUF_SIZE;
 
-  memset(pxState->sDevice, 0, ADT_GEN_BUF_SIZE);
+  memset(pxState->sDevice, 0, DC_GEN_BUF_SIZE);
 
   if (argc < 2)
   {
@@ -120,16 +150,16 @@ static void DC_PrepareBuffer(void* pBufMem,
   memset(pBufMem, 0, u64AvailBufSizeBytes);
   // Pick smaller amount of full buffer and data left
   u64BytesToWrite = ((u64AvailBufSizeBytes < u64DataLeftBytes) ? u64AvailBufSizeBytes : u64DataLeftBytes);
-  u64NumNumbers = u64BytesToWrite / ADT_DC_RUNNING_NUM_SIZE_BYTES;
-  u64LeftoverBytes = u64BytesToWrite % ADT_DC_RUNNING_NUM_SIZE_BYTES;
-  pMemUpperBound = pBufMem + (u64NumNumbers * ADT_DC_RUNNING_NUM_SIZE_BYTES);
+  u64NumNumbers = u64BytesToWrite / DC_RUNNING_NUM_SIZE_BYTES;
+  u64LeftoverBytes = u64BytesToWrite % DC_RUNNING_NUM_SIZE_BYTES;
+  pMemUpperBound = pBufMem + (u64NumNumbers * DC_RUNNING_NUM_SIZE_BYTES);
   u64WriteNum = u64StartNumber;
 
   while (pBufMem < pMemUpperBound)
   {
-    memcpy(pBufMem, &u64WriteNum, ADT_DC_RUNNING_NUM_SIZE_BYTES);
+    memcpy(pBufMem, &u64WriteNum, DC_RUNNING_NUM_SIZE_BYTES);
     u64WriteNum++;
-    pBufMem += ADT_DC_RUNNING_NUM_SIZE_BYTES;
+    pBufMem += DC_RUNNING_NUM_SIZE_BYTES;
   }
   if (u64LeftoverBytes)
   {
@@ -174,7 +204,7 @@ static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
   if (timercmp(pxLastTime, pxNowTime, <) && (u64LastDataBytesLeft))
   {
     fTimeElapsedFine = (1.0 * (pxNowTime->tv_sec - pxLastTime->tv_sec)) + (0.000001 * (pxNowTime->tv_usec - pxLastTime->tv_usec));
-    fSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+    fSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * DC_BUF_SIZE_MEBIBYTE) * fTimeElapsedFine);
   }
 
   printf("\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. "
@@ -204,10 +234,10 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   // No return value checking for performance purposes
   gettimeofday(&xStartTime, NULL);
   gettimeofday(&xLastTime, NULL);
-  xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
+  xLastTime.tv_sec -= (DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
   
   
-  pCompBufMem = malloc(pxState->u32BufSize);
+  pCompBufMem = malloc(DC_BUF_SIZE_COMPLETE);
 
   if (pCompBufMem == NULL)
   {
@@ -215,7 +245,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
     
     return 0;
   }
-  pReadBufMem = malloc(pxState->u32BufSize);
+  pReadBufMem = malloc(DC_BUF_SIZE_COMPLETE);
 
   if (pReadBufMem == NULL)
   {
@@ -241,7 +271,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   // In loop prepare the buffer, read and compare
   while (u64DataLeftBytes)
   {
-    DC_PrepareBuffer(pCompBufMem, pxState->u32BufSize,
+    DC_PrepareBuffer(pCompBufMem, DC_BUF_SIZE_COMPLETE,
 		     u64DataLeftBytes,
 		     u64ReadNumber,
 		     &u64BufferUsedDataBytes,
@@ -276,7 +306,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
     // Write where we are, if interval seconds passed
     gettimeofday(&xNowTime, NULL);
 
-    if ((xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
+    if ((xLastTime.tv_sec + DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
     {
       DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
 		       &xStartTime, &xLastTime, &xNowTime);
@@ -314,9 +344,9 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
   gettimeofday(&xStartTime, NULL);
   gettimeofday(&xLastTime, NULL);
-  xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
+  xLastTime.tv_sec -= (DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
   
-  pBufMem = malloc(pxState->u32BufSize);
+  pBufMem = malloc(DC_BUF_SIZE_COMPLETE);
 
   if (pBufMem == NULL)
   {
@@ -339,7 +369,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   // In loop prepare the buffer and write
   while (u64DataLeftBytes)
   {
-    DC_PrepareBuffer(pBufMem, pxState->u32BufSize,
+    DC_PrepareBuffer(pBufMem, DC_BUF_SIZE_COMPLETE,
 		     u64DataLeftBytes,
 		     u64WriteNumber,
 		     &u64BufferUsedDataBytes,
@@ -361,7 +391,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
     // Write where we are, if interval seconds passed
     gettimeofday(&xNowTime, NULL);
 
-    if ((xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
+    if ((xLastTime.tv_sec + DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
     {
       DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
 		       &xStartTime, &xLastTime, &xNowTime);
@@ -383,6 +413,64 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 }
 
 
+static void ADT_StripEnd(char* sParamString)
+{
+  uint32_t i;
+
+  for (i = strlen(sParamString) - 1; i > 0; i--)
+  {
+    if (sParamString[i] == ' ')
+    {
+      sParamString[i] = 0;
+    }
+    else
+    {
+      break;
+    }
+  }
+}
+
+
+
+
+
+
+static uint8_t bADT_IdentifyDisk(int iFd)
+{
+  uint16_t au16DriveInfoRaw[ADT_DISK_RAW_INFO_IOCTL_SIZE] = { 0 };
+  char sModel[ADT_DISK_INFO_MODEL_SIZE + 1] = { 0 };
+  char sSerial[ADT_DISK_INFO_SERIAL_SIZE + 1] = { 0 };
+  char sFirmware[ADT_DISK_INFO_FIRMWARE_SIZE + 1] = { 0 };
+  
+  if (!ioctl(iFd, HDIO_GET_IDENTITY, au16DriveInfoRaw))
+  {
+    strncpy(sModel, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_MODEL_IOCTL_POS])),
+	    ADT_DISK_INFO_MODEL_SIZE);
+    strncpy(sSerial, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_SERIAL_IOCTL_POS])),
+	    ADT_DISK_INFO_SERIAL_SIZE);
+    strncpy(sFirmware, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_FIRMWARE_IOCTL_POS])),
+	    ADT_DISK_INFO_FIRMWARE_SIZE);
+
+
+    // Strip stuff from end
+    ADT_StripEnd(sModel);
+    ADT_StripEnd(sSerial);
+    ADT_StripEnd(sFirmware);
+
+    printf("Model: >%s<\n", sModel);
+    printf("Serial: >%s<\n", sSerial);
+    printf("Firmware: >%s<\n", sFirmware);
+
+
+    return 1;
+  }
+  else
+  {
+    printf("Could not identify disk!\n");
+  }
+      
+  return 0;
+}
 
 
 
@@ -391,12 +479,9 @@ int main(int argc, char* argv[])
   int iFd = -1;
   int iTemp = 0;
   tDcState xState;
-  char sReadBuf[ADT_GEN_BUF_SIZE] = { 0 };
-  char sModel[ADT_DISK_INFO_MODEL_LEN + 1] = { 0 };
-  char sSerial[ADT_DISK_INFO_SERIAL_LEN + 1] = { 0 };
-  char sFirmware[ADT_DISK_INFO_FIRMWARE_LEN + 1] = { 0 };
-  
-  printf(ADT_DC_VERSION_STR);
+  char sReadBuf[DC_GEN_BUF_SIZE] = { 0 };
+
+  printf(DC_VERSION_STR);
   
   if (!bDC_GetParams(argc, argv, &xState))
   {
@@ -413,13 +498,13 @@ int main(int argc, char* argv[])
     
     return 1;
   }
-  bADT_IdentifyDisk(iFd, sModel, sSerial, sFirmware, &(xState.u64DevSizeBytes));
+  bADT_IdentifyDisk(iFd);
   iTemp = ioctl(iFd, BLKGETSIZE64, &(xState.u64DevSizeBytes));
   close(iFd);
 
   if (iTemp == -1)
   {
-    printf("Error: Unable to identify device (%s)!\n", xState.sDevice);
+    printf("Error: Unable to get size of the device (%s)!\n", xState.sDevice);
     
     return 1;
   }
@@ -455,3 +540,5 @@ int main(int argc, char* argv[])
 
   return 0;
 }
+*/
+#endif // #define _ADT_SHARED_H_
