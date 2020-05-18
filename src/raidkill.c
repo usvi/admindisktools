@@ -97,12 +97,6 @@ static uint8_t bDC_GetParams(int argc, char* argv[], tDcState* pxState)
 
 
 
-
-
-
-
-
-
 static uint8_t bRK_ReadRaid(tDcState* pxState)
 {
   // And how to check we have succeeded?
@@ -142,8 +136,8 @@ static uint8_t bRK_ReadRaid(tDcState* pxState)
 
     return 0;
   }
-  // Make two reads and compare later
 
+  // Make two reads and compare later
   // Beginning
   if ((lseek(iFd, 0, SEEK_SET) == -1) ||
       (read(iFd, pReadBufMem, pxState->u32BufSize) != pxState->u32BufSize))
@@ -205,12 +199,12 @@ static uint8_t bRK_KillRaid(tDcState* pxState)
   // write some amount of metadata to the end and some write it
   // to the beginning. We need to erase both areas with a kill
   // buffer. The size defined at the beginning of file.
-  void* pBufMem = NULL;
+  void* pKillBufMem = NULL;
   int iFd = -1;
 
-  pBufMem = malloc(pxState->u32BufSize);
+  pKillBufMem = malloc(pxState->u32BufSize);
 
-  if (pBufMem == NULL)
+  if (pKillBufMem == NULL)
   {
     printf("Error: Malloc failed\n");
     
@@ -221,40 +215,44 @@ static uint8_t bRK_KillRaid(tDcState* pxState)
   if (iFd == -1)
   {
     printf("Error: Unable to open the device in write mode\n");
-    free(pBufMem);
+    free(pKillBufMem);
 
     return 0;
   }
 
   // Seek, write and flush the beginning
   if ((lseek(iFd, 0, SEEK_SET) == -1) ||
-      (write(iFd, pBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
+      (write(iFd, pKillBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
       (fsync(iFd) == -1))
   {
-    printf("Error: Unable to write to the beginning\n");
-    free(pBufMem);
+    printf("Error: Unable to write to the beginning (%" PRIu64 ")\n", (uint64_t)0);
+    free(pKillBufMem);
     close(iFd);
 
     return 0;
   }
-  printf("Wrote %u bytes to the beginning\n", pxState->u32BufSize);
+  printf("Wrote %u bytes to the beginning (%" PRIu64 ")\n",
+	 pxState->u32BufSize, (uint64_t)0);
 
   // Seek, write and flush the end
   if ((lseek(iFd, (pxState->u64DevSizeBytes - pxState->u32BufSize), SEEK_SET) == -1) ||
-      (write(iFd, pBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
+      (write(iFd, pKillBufMem, pxState->u32BufSize) != pxState->u32BufSize) ||
       (fsync(iFd) == -1))
   {
-    printf("Error: Unable to write to the end\n");
-    free(pBufMem);
+    printf("Error: Unable to write to the end (%" PRIu64 ")\n",
+	   (pxState->u64DevSizeBytes - pxState->u32BufSize));
+    free(pKillBufMem);
     close(iFd);
 
     return 0;
   }
   // We can already release these
-  free(pBufMem);
+  free(pKillBufMem);
   close(iFd);
 
-  printf("Wrote %u bytes to the end\n", pxState->u32BufSize);
+  printf("Wrote %u bytes to the end (%" PRIu64 ")\n",
+	 pxState->u32BufSize,
+	 (pxState->u64DevSizeBytes - pxState->u32BufSize));
   printf("Successfully wrote raid kill buffers\n");
 
   return 1;
