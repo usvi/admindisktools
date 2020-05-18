@@ -19,7 +19,10 @@
 #define ADT_DISK_INFO_FIRMWARE_IOCTL_POS ((uint16_t)23)
 
 
-void ADT_StripEnd(char* sParamString);
+void ADT_TrimEnd(char* sParamString);
+void ADT_TrimBegin(char* sParamString);
+void ADT_Trim(char* sParamString);
+
 
 uint8_t bADT_IdentifyDisk(int iFd, char* sModel,
                           char* sSerial, char* sFirmware,

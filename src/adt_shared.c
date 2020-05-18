@@ -7,7 +7,32 @@
 #include <linux/fs.h>
 
 
-void ADT_StripEnd(char* sParamString)
+void ADT_TrimBegin(char* sParamString)
+{
+  uint32_t i;
+  uint64_t u64Len = strlen(sParamString);
+
+  if (u64Len <= 1)
+  {
+    return;
+  }
+
+  for (i = 0; i < u64Len; i++)
+  {
+    if (sParamString[0] == ' ')
+    {
+      // Memmove left 1 byte and axe the last byte
+      memmove(sParamString, (sParamString + 1), (u64Len - 1 - i));
+      sParamString[u64Len - 1 - i] = 0;
+    }
+    else
+    {
+      break;
+    }
+  }
+}
+
+void ADT_TrimEnd(char* sParamString)
 {
   uint32_t i;
   uint64_t u64Len = strlen(sParamString);
@@ -29,6 +54,17 @@ void ADT_StripEnd(char* sParamString)
     }
   }
 }
+
+
+
+void ADT_Trim(char* sParamString)
+{
+  ADT_TrimBegin(sParamString);
+  ADT_TrimEnd(sParamString);
+}
+
+
+
 
 
 
@@ -65,19 +101,19 @@ uint8_t bADT_IdentifyDisk(int iFd, char* sModel,
       {
 	strncpy(sModel, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_MODEL_IOCTL_POS])),
 		ADT_DISK_INFO_MODEL_LEN);
-	ADT_StripEnd(sModel);
+	ADT_Trim(sModel);
       }
       if (sSerial != NULL)
       {
 	strncpy(sSerial, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_SERIAL_IOCTL_POS])),
 		ADT_DISK_INFO_SERIAL_LEN);
-	ADT_StripEnd(sSerial);
+	ADT_Trim(sSerial);
       }
       if (sFirmware != NULL)
       {
 	strncpy(sFirmware, (char*)(&(au16DriveInfoRaw[ADT_DISK_INFO_FIRMWARE_IOCTL_POS])),
 		ADT_DISK_INFO_FIRMWARE_LEN);
-	ADT_StripEnd(sFirmware);
+	ADT_Trim(sFirmware);
       }
       
       u8RetVal = ((u8RetVal > 0) ? 1 : u8RetVal);
