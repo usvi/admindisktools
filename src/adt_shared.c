@@ -173,7 +173,7 @@ void ADT_BytesToHumanReadable(uint64_t u64SizeBytes,
   {
     // Still gibibytes
     fSize = (1.0 * u64SizeBytes) / (1.0 * ADT_BYTES_IN_GIBIBYTE);
-    snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f MiB", fSize);
+    snprintf(sHumanReadable, ADT_GEN_BUF_SIZE, "%.1f GiB", fSize);
   }
   else
   {
