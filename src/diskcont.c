@@ -171,8 +171,9 @@ static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
     fSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
   }
 
-  printf("\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. "
-	 "%uh %02um %02us elapsed. Speed now: %.2f MiB/s         \r",
+  printf("\x1b[A" "\x1b[A" "\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. \n"
+	 "%uh %02um %02us elapsed. \n"
+	 "Speed now: %.2f MiB/s         ",
 	 u64PassedBytes, u64DevSizeBytes, fProgress,
 	 u32Hours, u32Mins, u32Secs, fSpeedMbPerSeconds);
   fflush(stdout);
@@ -231,6 +232,8 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
     return 0;
   }
+  // Write couple of newlines in sync to the prevline sequences
+  printf("\n\n");
 
   // In loop prepare the buffer, read and compare
   while (u64DataLeftBytes)
@@ -329,6 +332,8 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
     return 0;
   }
+  // Write couple of newlines in sync to the prevline sequences
+  printf("\n\n");
 
   // In loop prepare the buffer and write
   while (u64DataLeftBytes)
