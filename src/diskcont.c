@@ -151,7 +151,8 @@ static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
   static uint64_t u64PassedBytes;
   static float fProgress;
   static float fTimeElapsedFine;
-  static float fSpeedMbPerSeconds;
+  static float fNowSpeedMbPerSeconds;
+  static float fAverageSpeedMbPerSeconds;
   
   u32TimeElapsed = pxNowTime->tv_sec - pxStartTime->tv_sec;
   u32Secs = u32TimeElapsed % 60;
@@ -163,19 +164,24 @@ static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
   fProgress = 100.0 * (1.0 * u64PassedBytes) / (1.0 * u64DevSizeBytes);
 
   // For calculations we need fine-grained stuff.
-  fSpeedMbPerSeconds = 0.0;
+  fNowSpeedMbPerSeconds = 0.0;
+  fAverageSpeedMbPerSeconds = 0.0;
   
   if (timercmp(pxLastTime, pxNowTime, <) && (u64LastDataBytesLeft))
   {
+    // First calculate current speed
     fTimeElapsedFine = (1.0 * (pxNowTime->tv_sec - pxLastTime->tv_sec)) + (0.000001 * (pxNowTime->tv_usec - pxLastTime->tv_usec));
-    fSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+    fNowSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+    // And now we calculate average speed
+    fTimeElapsedFine = (1.0 * (pxNowTime->tv_sec - pxStartTime->tv_sec)) + (0.000001 * (pxNowTime->tv_usec - pxStartTime->tv_usec));
+    fAverageSpeedMbPerSeconds = (1.0 * (u64DevSizeBytes - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
   }
 
   printf("\x1b[A" "\x1b[A" "\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. \n"
 	 "%uh %02um %02us elapsed. \n"
-	 "Speed now: %.2f MiB/s         ",
+	 "Speed now: %.2f MiB/s  Average: %.2f MiB/s       ",
 	 u64PassedBytes, u64DevSizeBytes, fProgress,
-	 u32Hours, u32Mins, u32Secs, fSpeedMbPerSeconds);
+	 u32Hours, u32Mins, u32Secs, fNowSpeedMbPerSeconds, fAverageSpeedMbPerSeconds);
   fflush(stdout);
 }
 
