@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/time.h>
-
+#include <semaphore.h>
 
 
 #define ADT_DC_VERSION_STR "Diskcont v. 1.02 by Janne Paalijarvi\n"
@@ -21,9 +21,13 @@ typedef struct
   uint8_t u8Silent;
   uint8_t u8Write;
   uint8_t u8Read;
+  uint8_t u8ThreadError;
   uint32_t u32BufSize;
   char sDevice[ADT_GEN_BUF_SIZE];
   uint64_t u64DevSizeBytes;
+  void* apMemBufs[2];
+  sem_t xSemAllocate;
+  sem_t xSemWriteDisk;
   
 } tDcState;
 
@@ -393,70 +397,96 @@ int main(int argc, char* argv[])
 {
   int iFd = -1;
   int iTemp = 0;
-  tDcState xState;
+  tDcState* pxState;
   char sReadBuf[ADT_GEN_BUF_SIZE] = { 0 };
   char sSizeHumReadBuf[ADT_GEN_BUF_SIZE] = { 0 };
   char sModel[ADT_DISK_INFO_MODEL_LEN + 1] = { 0 };
   char sSerial[ADT_DISK_INFO_SERIAL_LEN + 1] = { 0 };
-  
+
   printf(ADT_DC_VERSION_STR);
-  
-  if (!bDC_GetParams(argc, argv, &xState))
+
+  pxState = malloc(sizeof(*pxState));
+
+  if (pxState == NULL)
+  {
+    printf("Failed to malloc state struct\n");
+
+    return 1;
+  }
+  if ((sem_init(&(pxState->xSemAllocate), 0, 0) != 0) ||
+      (sem_init(&(pxState->xSemWriteDisk), 0, 0) != 0))
+  {
+    printf("Failed to initialize semaphores\n");
+    free(pxState);
+
+    return 1;
+  }
+   
+  if (!bDC_GetParams(argc, argv, pxState))
   {
     printf("Error: Params failure, use:\n");
     printf("diskcont [-w] [-r] [-s] /path/to/device\n");
+    free(pxState);
 
     return 1;
   }
-  iFd = open(xState.sDevice, O_RDONLY);
+  iFd = open(pxState->sDevice, O_RDONLY);
 
   if (iFd == -1)
   {
-    printf("Error: Unable to open device %s (are you not root?)\n", xState.sDevice);
+    printf("Error: Unable to open device %s (are you not root?)\n", pxState->sDevice);
+    free(pxState);
     
     return 1;
   }
-  bADT_IdentifyDisk(iFd, sModel, sSerial, NULL, &(xState.u64DevSizeBytes));
+  bADT_IdentifyDisk(iFd, sModel, sSerial, NULL, &(pxState->u64DevSizeBytes));
   close(iFd);
 
   if (iTemp == -1)
   {
-    printf("Error: Unable to get info for device (%s)!\n", xState.sDevice);
+    printf("Error: Unable to get info for device (%s)!\n", pxState->sDevice);
+    free(pxState);
     
     return 1;
   }
-  ADT_BytesToHumanReadable(xState.u64DevSizeBytes, sSizeHumReadBuf);
-  printf("Found device %s   %s\n", xState.sDevice, sSizeHumReadBuf);
+  ADT_BytesToHumanReadable(pxState->u64DevSizeBytes, sSizeHumReadBuf);
+  printf("Found device %s   %s\n", pxState->sDevice, sSizeHumReadBuf);
   printf("Model: %s   Serial: %s\n", sModel, sSerial);
   
-  if (xState.u8Write)
+  if (pxState->u8Write)
   {
     // Write test
-    if (!xState.u8Silent)
+    if (!pxState->u8Silent)
     {
-      printf("This write test will COMPLETELY WIPE OUT %s\n", xState.sDevice);
+      printf("This write test will COMPLETELY WIPE OUT %s\n", pxState->sDevice);
       printf("To continue, type uppercase yes\n");
       fgets(sReadBuf, sizeof(sReadBuf), stdin);
 
       if (strncmp(sReadBuf, "YES", strlen("YES")) != 0)
       {
 	printf("Error: User failed to confirm operation\n");
+	free(pxState);
 	
 	return 1;
       }
     }
-    if (!bDC_WriteTest(&xState))
+    if (!bDC_WriteTest(pxState))
     {
+      free(pxState);
+
       return 1;
     }
   }
-  if (xState.u8Read)
+  if (pxState->u8Read)
   {
-    if (!bDC_ReadTest(&xState))
+    if (!bDC_ReadTest(pxState))
     {
+      free(pxState);
+
       return 1;
     }
   }
+  free(pxState);
 
   return 0;
 }
