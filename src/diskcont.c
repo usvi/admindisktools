@@ -25,9 +25,19 @@ typedef struct
   uint32_t u32BufSize;
   char sDevice[ADT_GEN_BUF_SIZE];
   uint64_t u64DevSizeBytes;
-  void* apMemBufs[2];
+  pthread_t xAllocatorThread;
   sem_t xSemAllocate;
   sem_t xSemWriteDisk;
+  void* apMemBufs[2];
+  
+  struct timeval xStartTime;
+  struct timeval xLastTime;
+  struct timeval xNowTime;
+  uint64_t u64DataLeftBytes;
+  uint64_t u64LastDataLeftBytes;
+  uint64_t u64WriteNumber;
+  uint64_t u64BufferUsedDataBytes;
+  uint64_t u64BufferUsedNumbers;
   
 } tDcState;
 
@@ -307,21 +317,18 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
 static uint8_t bDC_WriteTest(tDcState* pxState)
 {
+  uint64_t u64WrittenCallBytes = 0;
   void* pBufMem = NULL;
   int iFd = -1;
-  struct timeval xStartTime;
-  struct timeval xLastTime;
-  struct timeval xNowTime;
-  uint64_t u64DataLeftBytes = pxState->u64DevSizeBytes;
-  uint64_t u64LastDataLeftBytes = 0;
-  uint64_t u64WriteNumber = 0;
-  uint64_t u64BufferUsedDataBytes = 0;
-  uint64_t u64BufferUsedNumbers = 0;
-  uint64_t u64WrittenCallBytes = 0;
+  pxState->u64DataLeftBytes = pxState->u64DevSizeBytes;
+  pxState->u64LastDataLeftBytes = 0;
+  pxState->u64WriteNumber = 0;
+  pxState->u64BufferUsedDataBytes = 0;
+  pxState->u64BufferUsedNumbers = 0;
 
-  gettimeofday(&xStartTime, NULL);
-  gettimeofday(&xLastTime, NULL);
-  xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
+  gettimeofday(&(pxState->xStartTime), NULL);
+  gettimeofday(&(pxState->xLastTime), NULL);
+  pxState->xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
   
   pBufMem = malloc(pxState->u32BufSize);
 
@@ -346,41 +353,41 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   printf("\n\n");
 
   // In loop prepare the buffer and write
-  while (u64DataLeftBytes)
+  while (pxState->u64DataLeftBytes)
   {
     DC_PrepareBuffer(pBufMem, pxState->u32BufSize,
-		     u64DataLeftBytes,
-		     u64WriteNumber,
-		     &u64BufferUsedDataBytes,
-		     &u64BufferUsedNumbers);
+		     pxState->u64DataLeftBytes,
+		     pxState->u64WriteNumber,
+		     &(pxState->u64BufferUsedDataBytes),
+		     &(pxState->u64BufferUsedNumbers));
     
-    u64WrittenCallBytes = write(iFd, pBufMem, u64BufferUsedDataBytes);
+    u64WrittenCallBytes = write(iFd, pBufMem, pxState->u64BufferUsedDataBytes);
   
-    if (u64WrittenCallBytes != u64BufferUsedDataBytes)
+    if (u64WrittenCallBytes != pxState->u64BufferUsedDataBytes)
     {
-      printf("Error: Problem writing bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - u64DataLeftBytes));
+      printf("Error: Problem writing bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes));
       free(pBufMem);
       close(iFd);
     
       return 0;
     }
-    u64DataLeftBytes -= u64BufferUsedDataBytes;
-    u64WriteNumber += u64BufferUsedNumbers;
+    pxState->u64DataLeftBytes -= pxState->u64BufferUsedDataBytes;
+    pxState->u64WriteNumber += pxState->u64BufferUsedNumbers;
 
     // Write where we are, if interval seconds passed
-    gettimeofday(&xNowTime, NULL);
+    gettimeofday(&(pxState->xNowTime), NULL);
 
-    if ((xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
+    if ((pxState->xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < pxState->xNowTime.tv_sec)
     {
-      DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		       &xStartTime, &xLastTime, &xNowTime);
-      u64LastDataLeftBytes = u64DataLeftBytes;
-      xLastTime = xNowTime;
+      DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
+		       &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
+      pxState->u64LastDataLeftBytes = pxState->u64DataLeftBytes;
+      pxState->xLastTime = pxState->xNowTime;
     }
   }
-  gettimeofday(&xNowTime, NULL);
-  DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		   &xStartTime, &xLastTime, &xNowTime);
+  gettimeofday(&(pxState->xNowTime), NULL);
+  DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
+		   &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
   printf("\nSyncinc...\n");
   fsync(iFd);
   printf("Done all writing!\n");
