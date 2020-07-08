@@ -35,8 +35,7 @@ typedef struct
   struct timeval xNowTime;
   uint64_t u64DataLeftBytes;
   uint64_t u64LastDataLeftBytes;
-  uint64_t u64WriteNumber;
-  uint64_t u64ReadNumber;
+  uint64_t u64CurrNumber;
   uint64_t u64BufferUsedDataBytes;
   uint64_t u64BufferUsedNumbers;
   
@@ -112,12 +111,7 @@ static uint8_t bDC_GetParams(int argc, char* argv[], tDcState* pxState)
 
 
 
-static void DC_PrepareBuffer(void* pBufMem,
-			     uint64_t u64AvailBufSizeBytes,
-			     uint64_t u64DataLeftBytes,
-			     uint64_t u64StartNumber,
-			     uint64_t* pu64UsedDataBytes,
-			     uint64_t* pu64UsedNumbers)
+static void DC_PrepareBuffer(tDcState* pxState, void* pBufMem)
 {
   // Staticed here just for efficiency
   static uint64_t u64BytesToWrite;
@@ -126,13 +120,15 @@ static void DC_PrepareBuffer(void* pBufMem,
   static uint64_t u64WriteNum;
   static void* pMemUpperBound;
   
-  memset(pBufMem, 0, u64AvailBufSizeBytes);
+  memset(pBufMem, 0, pxState->u32BufSize);
   // Pick smaller amount of full buffer and data left
-  u64BytesToWrite = ((u64AvailBufSizeBytes < u64DataLeftBytes) ? u64AvailBufSizeBytes : u64DataLeftBytes);
+  u64BytesToWrite = ((pxState->u32BufSize < pxState->u64DataLeftBytes) ?
+		     pxState->u32BufSize :
+		     pxState->u64DataLeftBytes);
   u64NumNumbers = u64BytesToWrite / ADT_DC_RUNNING_NUM_SIZE_BYTES;
   u64LeftoverBytes = u64BytesToWrite % ADT_DC_RUNNING_NUM_SIZE_BYTES;
   pMemUpperBound = pBufMem + (u64NumNumbers * ADT_DC_RUNNING_NUM_SIZE_BYTES);
-  u64WriteNum = u64StartNumber;
+  u64WriteNum = pxState->u64CurrNumber;
 
   while (pBufMem < pMemUpperBound)
   {
@@ -145,8 +141,8 @@ static void DC_PrepareBuffer(void* pBufMem,
     memcpy(pBufMem, &u64WriteNum, u64LeftoverBytes);
     u64WriteNum++;
   }
-  *pu64UsedDataBytes = u64BytesToWrite;
-  *pu64UsedNumbers = u64WriteNum - u64StartNumber;
+  pxState->u64BufferUsedDataBytes = u64BytesToWrite;
+  pxState->u64BufferUsedNumbers = u64WriteNum - pxState->u64CurrNumber;
 }
 
 
@@ -210,7 +206,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
   pxState->u64DataLeftBytes = pxState->u64DevSizeBytes;
   pxState->u64LastDataLeftBytes = 0;
-  pxState->u64ReadNumber = 0;
+  pxState->u64CurrNumber = 0;
   pxState->u64BufferUsedDataBytes = 0;
   pxState->u64BufferUsedNumbers = 0;
 
@@ -257,12 +253,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   // In loop prepare the buffer, read and compare
   while (pxState->u64DataLeftBytes)
   {
-    DC_PrepareBuffer(pCompBufMem, pxState->u32BufSize,
-		     pxState->u64DataLeftBytes,
-		     pxState->u64ReadNumber,
-		     &(pxState->u64BufferUsedDataBytes),
-		     &(pxState->u64BufferUsedNumbers));
-    
+    DC_PrepareBuffer(pxState, pCompBufMem);
     u64ReadCallBytes = read(iFd, pReadBufMem, pxState->u64BufferUsedDataBytes);
   
     if (u64ReadCallBytes != pxState->u64BufferUsedDataBytes)
@@ -287,7 +278,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
       return 0;
     }
     pxState->u64DataLeftBytes -= pxState->u64BufferUsedDataBytes;
-    pxState->u64ReadNumber += pxState->u64BufferUsedNumbers;
+    pxState->u64CurrNumber += pxState->u64BufferUsedNumbers;
 
     // Write where we are, if interval seconds passed
     gettimeofday(&(pxState->xNowTime), NULL);
@@ -319,7 +310,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   int iFd = -1;
   pxState->u64DataLeftBytes = pxState->u64DevSizeBytes;
   pxState->u64LastDataLeftBytes = 0;
-  pxState->u64WriteNumber = 0;
+  pxState->u64CurrNumber = 0;
   pxState->u64BufferUsedDataBytes = 0;
   pxState->u64BufferUsedNumbers = 0;
 
@@ -353,12 +344,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   // In loop prepare the buffer and write
   while (pxState->u64DataLeftBytes)
   {
-    DC_PrepareBuffer(pBufMem, pxState->u32BufSize,
-		     pxState->u64DataLeftBytes,
-		     pxState->u64WriteNumber,
-		     &(pxState->u64BufferUsedDataBytes),
-		     &(pxState->u64BufferUsedNumbers));
-    
+    DC_PrepareBuffer(pxState, pBufMem);
     u64WrittenCallBytes = write(iFd, pBufMem, pxState->u64BufferUsedDataBytes);
   
     if (u64WrittenCallBytes != pxState->u64BufferUsedDataBytes)
@@ -370,7 +356,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
       return 0;
     }
     pxState->u64DataLeftBytes -= pxState->u64BufferUsedDataBytes;
-    pxState->u64WriteNumber += pxState->u64BufferUsedNumbers;
+    pxState->u64CurrNumber += pxState->u64BufferUsedNumbers;
 
     // Write where we are, if interval seconds passed
     gettimeofday(&(pxState->xNowTime), NULL);
