@@ -149,17 +149,7 @@ static void DC_PrepareBuffer(void* pBufMem,
   *pu64UsedNumbers = u64WriteNum - u64StartNumber;
 }
 
-/*
-  DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
-  &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
 
-static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
-			     uint64_t u64NowDataBytesLeft,
-			     uint64_t u64DevSizeBytes,
-			     struct timeval* pxStartTime,
-			     struct timeval* pxLastTime,
-			     struct timeval* pxNowTime)
-*/
 
 static void DC_PrintProgress(tDcState* pxState)
 {
@@ -260,6 +250,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
     return 0;
   }
+  printf("Read test starting\n");
   // Write couple of newlines in sync to the prevline sequences
   printf("\n\n");
 
@@ -355,6 +346,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
     return 0;
   }
+  printf("Write test starting\n");
   // Write couple of newlines in sync to the prevline sequences
   printf("\n\n");
 
