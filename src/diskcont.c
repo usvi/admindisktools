@@ -26,8 +26,8 @@ typedef struct
   char sDevice[ADT_GEN_BUF_SIZE];
   uint64_t u64DevSizeBytes;
   pthread_t xAllocatorThread;
-  sem_t xSemAllocate;
-  sem_t xSemWriteDisk;
+  sem_t xSemBufferAllocation;
+  sem_t xSemDiskOperation;
   void* apMemBufs[2];
   
   struct timeval xStartTime;
@@ -419,8 +419,8 @@ int main(int argc, char* argv[])
 
     return 1;
   }
-  if ((sem_init(&(pxState->xSemAllocate), 0, 0) != 0) ||
-      (sem_init(&(pxState->xSemWriteDisk), 0, 0) != 0))
+  if ((sem_init(&(pxState->xSemBufferAllocation), 0, 0) != 0) ||
+      (sem_init(&(pxState->xSemDiskOperation), 0, 0) != 0))
   {
     printf("Failed to initialize semaphores\n");
     free(pxState);
