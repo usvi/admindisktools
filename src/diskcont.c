@@ -36,6 +36,7 @@ typedef struct
   uint64_t u64DataLeftBytes;
   uint64_t u64LastDataLeftBytes;
   uint64_t u64WriteNumber;
+  uint64_t u64ReadNumber;
   uint64_t u64BufferUsedDataBytes;
   uint64_t u64BufferUsedNumbers;
   
@@ -206,20 +207,18 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   void* pCompBufMem = NULL;
   void* pReadBufMem = NULL;
   int iFd = -1;
-  struct timeval xStartTime;
-  struct timeval xLastTime;
-  struct timeval xNowTime;
-  uint64_t u64DataLeftBytes = pxState->u64DevSizeBytes;
-  uint64_t u64LastDataLeftBytes = 0;
-  uint64_t u64ReadNumber = 0;
-  uint64_t u64BufferUsedDataBytes = 0;
-  uint64_t u64BufferUsedNumbers = 0;
   uint64_t u64ReadCallBytes = 0;
 
+  pxState->u64DataLeftBytes = pxState->u64DevSizeBytes;
+  pxState->u64LastDataLeftBytes = 0;
+  pxState->u64ReadNumber = 0;
+  pxState->u64BufferUsedDataBytes = 0;
+  pxState->u64BufferUsedNumbers = 0;
+
   // No return value checking for performance purposes
-  gettimeofday(&xStartTime, NULL);
-  gettimeofday(&xLastTime, NULL);
-  xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
+  gettimeofday(&(pxState->xStartTime), NULL);
+  gettimeofday(&(pxState->xLastTime), NULL);
+  pxState->xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
   
   
   pCompBufMem = malloc(pxState->u32BufSize);
@@ -256,19 +255,19 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   printf("\n\n");
 
   // In loop prepare the buffer, read and compare
-  while (u64DataLeftBytes)
+  while (pxState->u64DataLeftBytes)
   {
     DC_PrepareBuffer(pCompBufMem, pxState->u32BufSize,
-		     u64DataLeftBytes,
-		     u64ReadNumber,
-		     &u64BufferUsedDataBytes,
-		     &u64BufferUsedNumbers);
+		     pxState->u64DataLeftBytes,
+		     pxState->u64ReadNumber,
+		     &(pxState->u64BufferUsedDataBytes),
+		     &(pxState->u64BufferUsedNumbers));
     
-    u64ReadCallBytes = read(iFd, pReadBufMem, u64BufferUsedDataBytes);
+    u64ReadCallBytes = read(iFd, pReadBufMem, pxState->u64BufferUsedDataBytes);
   
-    if (u64ReadCallBytes != u64BufferUsedDataBytes)
+    if (u64ReadCallBytes != pxState->u64BufferUsedDataBytes)
     {
-      printf("Error: Problem reading bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - u64DataLeftBytes));
+      printf("Error: Problem reading bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes));
       free(pCompBufMem);
       free(pReadBufMem);
       close(iFd);
@@ -276,34 +275,34 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
       return 0;
     }
     // Compare buffers
-    if (memcmp(pCompBufMem, pReadBufMem, u64BufferUsedDataBytes) != 0)
+    if (memcmp(pCompBufMem, pReadBufMem, pxState->u64BufferUsedDataBytes) != 0)
     {
       // TODO: Find out which byte exactly.
       printf("\nError: Comparing failed at block beginning at %" PRIu64 "\n",
-	     (pxState->u64DevSizeBytes - u64DataLeftBytes));
+	     (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes));
       free(pCompBufMem);
       free(pReadBufMem);
       close(iFd);
     
       return 0;
     }
-    u64DataLeftBytes -= u64BufferUsedDataBytes;
-    u64ReadNumber += u64BufferUsedNumbers;
+    pxState->u64DataLeftBytes -= pxState->u64BufferUsedDataBytes;
+    pxState->u64ReadNumber += pxState->u64BufferUsedNumbers;
 
     // Write where we are, if interval seconds passed
-    gettimeofday(&xNowTime, NULL);
+    gettimeofday(&(pxState->xNowTime), NULL);
 
-    if ((xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < xNowTime.tv_sec)
+    if ((pxState->xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < pxState->xNowTime.tv_sec)
     {
-      DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		       &xStartTime, &xLastTime, &xNowTime);
-      u64LastDataLeftBytes = u64DataLeftBytes;
-      xLastTime = xNowTime;
+      DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
+		       &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
+      pxState->u64LastDataLeftBytes = pxState->u64DataLeftBytes;
+      pxState->xLastTime = pxState->xNowTime;
     }
   }
-  gettimeofday(&xNowTime, NULL);
-  DC_PrintProgress(u64LastDataLeftBytes, u64DataLeftBytes, pxState->u64DevSizeBytes,
-		   &xStartTime, &xLastTime, &xNowTime);
+  gettimeofday(&(pxState->xNowTime), NULL);
+  DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
+		   &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
   printf("\nDone reading, compare OK!\n");
   
   free(pCompBufMem);
