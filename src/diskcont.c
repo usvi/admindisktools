@@ -149,7 +149,9 @@ static void DC_PrepareBuffer(void* pBufMem,
   *pu64UsedNumbers = u64WriteNum - u64StartNumber;
 }
 
-
+/*
+  DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
+  &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
 
 static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
 			     uint64_t u64NowDataBytesLeft,
@@ -157,6 +159,9 @@ static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
 			     struct timeval* pxStartTime,
 			     struct timeval* pxLastTime,
 			     struct timeval* pxNowTime)
+*/
+
+static void DC_PrintProgress(tDcState* pxState)
 {
   // Staticed here just for efficiency
   static uint32_t u32TimeElapsed;
@@ -169,33 +174,37 @@ static void DC_PrintProgress(uint64_t u64LastDataBytesLeft,
   static float fNowSpeedMbPerSeconds;
   static float fAverageSpeedMbPerSeconds;
   
-  u32TimeElapsed = pxNowTime->tv_sec - pxStartTime->tv_sec;
+  u32TimeElapsed = pxState->xNowTime.tv_sec - pxState->xStartTime.tv_sec;
   u32Secs = u32TimeElapsed % 60;
   u32TimeElapsed -= u32Secs;
   u32Mins = (u32TimeElapsed % 3600) / 60;
   u32TimeElapsed -= u32Mins * 60;
   u32Hours = u32TimeElapsed / 3600;
-  u64PassedBytes = u64DevSizeBytes - u64NowDataBytesLeft;
-  fProgress = 100.0 * (1.0 * u64PassedBytes) / (1.0 * u64DevSizeBytes);
+  u64PassedBytes = pxState->u64DevSizeBytes - pxState->u64DataLeftBytes;
+  fProgress = 100.0 * (1.0 * u64PassedBytes) / (1.0 * pxState->u64DevSizeBytes);
 
   // For calculations we need fine-grained stuff.
   fNowSpeedMbPerSeconds = 0.0;
   fAverageSpeedMbPerSeconds = 0.0;
   
-  if (timercmp(pxLastTime, pxNowTime, <) && (u64LastDataBytesLeft))
+  if (timercmp(&(pxState->xLastTime), &(pxState->xNowTime), <) && (pxState->u64LastDataLeftBytes))
   {
     // First calculate current speed
-    fTimeElapsedFine = (1.0 * (pxNowTime->tv_sec - pxLastTime->tv_sec)) + (0.000001 * (pxNowTime->tv_usec - pxLastTime->tv_usec));
-    fNowSpeedMbPerSeconds = (1.0 * (u64LastDataBytesLeft - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+    fTimeElapsedFine = (1.0 * (pxState->xNowTime.tv_sec - pxState->xLastTime.tv_sec)) +
+      (0.000001 * (pxState->xNowTime.tv_usec - pxState->xLastTime.tv_usec));
+    fNowSpeedMbPerSeconds = (1.0 * (pxState->u64LastDataLeftBytes - pxState->u64DataLeftBytes)) /
+      ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
     // And now we calculate average speed
-    fTimeElapsedFine = (1.0 * (pxNowTime->tv_sec - pxStartTime->tv_sec)) + (0.000001 * (pxNowTime->tv_usec - pxStartTime->tv_usec));
-    fAverageSpeedMbPerSeconds = (1.0 * (u64DevSizeBytes - u64NowDataBytesLeft)) / ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+    fTimeElapsedFine = (1.0 * (pxState->xNowTime.tv_sec - pxState->xStartTime.tv_sec)) +
+      (0.000001 * (pxState->xNowTime.tv_usec - pxState->xStartTime.tv_usec));
+    fAverageSpeedMbPerSeconds = (1.0 * (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes)) /
+      ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
   }
 
   printf("\x1b[A" "\x1b[A" "\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. \n"
 	 "%uh %02um %02us elapsed. \n"
 	 "Speed now: %.2f MiB/s  Average: %.2f MiB/s       ",
-	 u64PassedBytes, u64DevSizeBytes, fProgress,
+	 u64PassedBytes, pxState->u64DevSizeBytes, fProgress,
 	 u32Hours, u32Mins, u32Secs, fNowSpeedMbPerSeconds, fAverageSpeedMbPerSeconds);
   fflush(stdout);
 }
@@ -294,15 +303,13 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
     if ((pxState->xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < pxState->xNowTime.tv_sec)
     {
-      DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
-		       &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
+      DC_PrintProgress(pxState);
       pxState->u64LastDataLeftBytes = pxState->u64DataLeftBytes;
       pxState->xLastTime = pxState->xNowTime;
     }
   }
   gettimeofday(&(pxState->xNowTime), NULL);
-  DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
-		   &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
+  DC_PrintProgress(pxState);
   printf("\nDone reading, compare OK!\n");
   
   free(pCompBufMem);
@@ -378,15 +385,13 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
     if ((pxState->xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < pxState->xNowTime.tv_sec)
     {
-      DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
-		       &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
+      DC_PrintProgress(pxState);
       pxState->u64LastDataLeftBytes = pxState->u64DataLeftBytes;
       pxState->xLastTime = pxState->xNowTime;
     }
   }
   gettimeofday(&(pxState->xNowTime), NULL);
-  DC_PrintProgress(pxState->u64LastDataLeftBytes, pxState->u64DataLeftBytes, pxState->u64DevSizeBytes,
-		   &(pxState->xStartTime), &(pxState->xLastTime), &(pxState->xNowTime));
+  DC_PrintProgress(pxState);
   printf("\nSyncinc...\n");
   fsync(iFd);
   printf("Done all writing!\n");
