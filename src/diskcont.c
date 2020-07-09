@@ -26,6 +26,7 @@ typedef struct
   uint32_t u32BufSize;
   char sDevice[ADT_GEN_BUF_SIZE];
   uint64_t u64DevSizeBytes;
+  int iFd;
   pthread_t xAllocatorThread;
   sem_t xSemThread;
   sem_t xSemBuffer0;
@@ -201,111 +202,6 @@ static void DC_PrintProgress(tDcState* pxState, uint8_t u8ForcePrint)
 }
 
 
-/*
-static uint8_t bDC_ReadTest(tDcState* pxState)
-{
-  void* pCompBufMem = NULL;
-  void* pReadBufMem = NULL;
-  int iFd = -1;
-  uint64_t u64ReadCallBytes = 0;
-
-  pxState->u64DataLeftBytes = pxState->u64DevSizeBytes;
-  pxState->u64LastDataLeftBytes = 0;
-  pxState->u64CurrNumber = 0;
-  pxState->u64BufferUsedDataBytes = 0;
-  pxState->u64BufferUsedNumbers = 0;
-
-  // No return value checking for performance purposes
-  gettimeofday(&(pxState->xStartTime), NULL);
-  gettimeofday(&(pxState->xLastTime), NULL);
-  pxState->xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
-  
-  
-  pCompBufMem = malloc(pxState->u32BufSize);
-
-  if (pCompBufMem == NULL)
-  {
-    printf("Error: Malloc failed\n");
-    
-    return 0;
-  }
-  pReadBufMem = malloc(pxState->u32BufSize);
-
-  if (pReadBufMem == NULL)
-  {
-    free(pCompBufMem);
-
-    printf("Error: Malloc failed\n");
-
-    return 0;
-  }
-  
-  //iFd = open(pxState->sDevice, O_RDONLY | O_SYNC);
-  iFd = open(pxState->sDevice, O_RDONLY);
-
-  if (iFd == -1)
-  {
-    printf("Error: Unable to open the device in write mode\n");
-    free(pCompBufMem);
-    free(pReadBufMem);
-
-    return 0;
-  }
-  printf("Read test starting\n");
-  // Write couple of newlines in sync to the prevline sequences
-  printf("\n\n");
-
-  // In loop prepare the buffer, read and compare
-  while (pxState->u64DataLeftBytes)
-  {
-    DC_PrepareBuffer(pxState, pCompBufMem);
-    u64ReadCallBytes = read(iFd, pReadBufMem, pxState->u64BufferUsedDataBytes);
-  
-    if (u64ReadCallBytes != pxState->u64BufferUsedDataBytes)
-    {
-      printf("Error: Problem reading bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes));
-      free(pCompBufMem);
-      free(pReadBufMem);
-      close(iFd);
-    
-      return 0;
-    }
-    // Compare buffers
-    if (memcmp(pCompBufMem, pReadBufMem, pxState->u64BufferUsedDataBytes) != 0)
-    {
-      // TODO: Find out which byte exactly.
-      printf("\nError: Comparing failed at block beginning at %" PRIu64 "\n",
-	     (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes));
-      free(pCompBufMem);
-      free(pReadBufMem);
-      close(iFd);
-    
-      return 0;
-    }
-    pxState->u64DataLeftBytes -= pxState->u64BufferUsedDataBytes;
-    pxState->u64CurrNumber += pxState->u64BufferUsedNumbers;
-
-    // Write where we are, if interval seconds passed
-    gettimeofday(&(pxState->xNowTime), NULL);
-
-    if ((pxState->xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < pxState->xNowTime.tv_sec)
-    {
-      DC_PrintProgress(pxState);
-      pxState->u64LastDataLeftBytes = pxState->u64DataLeftBytes;
-      pxState->xLastTime = pxState->xNowTime;
-    }
-  }
-  gettimeofday(&(pxState->xNowTime), NULL);
-  DC_PrintProgress(pxState);
-  printf("\nDone reading, compare OK!\n");
-  
-  free(pCompBufMem);
-  free(pReadBufMem);
-  close(iFd);
-
-  return 1;
-}
-*/
 
 
 static uint8_t bDC_BufferAllocator(void* pParams)
@@ -345,7 +241,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   uint64_t u64FullBuffersToWrite = 0;
   uint64_t u64LeftoverBytesToWrite = 0;
   uint64_t u64WriteBufferNum = 0;
-  int iFd = -1;
+  pxState->iFd = -1;
 
   if ((sem_init(&(pxState->xSemThread), 0, 0) != 0) ||
       (sem_init(&(pxState->xSemBuffer0), 0, 0) != 0) ||
@@ -396,9 +292,9 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
   // FIXME: Correct additional flags
   //iFd = open(pxState->sDevice, O_WRONLY | O_SYNC);
-  iFd = open(pxState->sDevice, O_WRONLY);
+  pxState->iFd = open(pxState->sDevice, O_WRONLY);
 
-  if (iFd == -1)
+  if (pxState->iFd == -1)
   {
     printf("Error: Unable to open the device in write mode\n");
 
@@ -423,7 +319,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
       // Let thread allocate at the same time we write:
       sem_post(&(pxState->xSemThread));
       sem_wait(&(pxState->xSemBuffer0));
-      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[0], pxState->u32BufSize);
+      u64WrittenCallBytes = write(pxState->iFd, pxState->apMemBufs[0], pxState->u32BufSize);
     }
     else // pxState->u8WantBuffer == 1
     {
@@ -431,7 +327,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
       // Let thread allocate at the same time we write:
       sem_post(&(pxState->xSemThread));
       sem_wait(&(pxState->xSemBuffer1));
-      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[1], pxState->u32BufSize);
+      u64WrittenCallBytes = write(pxState->iFd, pxState->apMemBufs[1], pxState->u32BufSize);
     }
     if (u64WrittenCallBytes != pxState->u32BufSize)
     {
@@ -446,7 +342,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
       sem_destroy(&(pxState->xSemThread));
       sem_destroy(&(pxState->xSemBuffer0));
       sem_destroy(&(pxState->xSemBuffer1));
-      close(iFd);
+      close(pxState->iFd);
 
       return 0;
     }
@@ -459,13 +355,13 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
     if (pxState->u8WantBuffer == 0)
     {
       sem_wait(&(pxState->xSemBuffer0));
-      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[0],
+      u64WrittenCallBytes = write(pxState->iFd, pxState->apMemBufs[0],
 				  u64LeftoverBytesToWrite);
     }
     else // pxState->u8WantBuffer == 1
     {
       sem_wait(&(pxState->xSemBuffer1));
-      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[1],
+      u64WrittenCallBytes = write(pxState->iFd, pxState->apMemBufs[1],
 				  u64LeftoverBytesToWrite);
     }
     if (u64WrittenCallBytes != u64LeftoverBytesToWrite)
@@ -481,21 +377,17 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
       sem_destroy(&(pxState->xSemThread));
       sem_destroy(&(pxState->xSemBuffer0));
       sem_destroy(&(pxState->xSemBuffer1));
-      close(iFd);
+      close(pxState->iFd);
 
       return 0;
     }
     pxState->u64NowDataLeftBytes -= u64LeftoverBytesToWrite;
   }
-
-
-
-  
   printf("\nSyncinc...\n\n\n");
-  fsync(iFd);
+  fsync(pxState->iFd);
   DC_PrintProgress(pxState, 1);
   printf("\nDone all writing!\n");
-  close(iFd);
+  close(pxState->iFd);
 
   // Bogus value so thread exits:
   pxState->u8WantBuffer = 100;
@@ -512,16 +404,13 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
 
 
-
-
-
 static uint8_t bDC_ReadTest(tDcState* pxState)
 {
   uint64_t u64ReadCallBytes = 0;
   uint64_t u64FullBuffersToRead = 0;
   uint64_t u64LeftoverBytesToRead = 0;
   uint64_t u64ReadBufferNum = 0;
-  int iFd = -1;
+  pxState->iFd = -1;
 
   if ((sem_init(&(pxState->xSemThread), 0, 0) != 0) ||
       (sem_init(&(pxState->xSemBuffer0), 0, 0) != 0) ||
@@ -572,9 +461,9 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
   // FIXME: Correct additional flags
   //iFd = open(pxState->sDevice, O_WRONLY | O_SYNC);
-  iFd = open(pxState->sDevice, O_RDONLY);
+  pxState->iFd = open(pxState->sDevice, O_RDONLY);
 
-  if (iFd == -1)
+  if (pxState->iFd == -1)
   {
     printf("Error: Unable to open the device in read mode\n");
 
@@ -597,7 +486,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   // buffer1 = read
   for (u64ReadBufferNum = 0; u64ReadBufferNum < u64FullBuffersToRead; u64ReadBufferNum++)
   {
-    u64ReadCallBytes = read(iFd, pxState->apMemBufs[1], pxState->u32BufSize);
+    u64ReadCallBytes = read(pxState->iFd, pxState->apMemBufs[1], pxState->u32BufSize);
 
     if (u64ReadCallBytes != pxState->u32BufSize)
     {
@@ -612,7 +501,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
       sem_destroy(&(pxState->xSemThread));
       sem_destroy(&(pxState->xSemBuffer0));
       sem_destroy(&(pxState->xSemBuffer1));
-      close(iFd);
+      close(pxState->iFd);
       
       return 0;
     }
@@ -634,7 +523,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
       sem_destroy(&(pxState->xSemThread));
       sem_destroy(&(pxState->xSemBuffer0));
       sem_destroy(&(pxState->xSemBuffer1));
-      close(iFd);
+      close(pxState->iFd);
       
       return 0;
     }
@@ -646,7 +535,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   }
   if (u64LeftoverBytesToRead)
   {
-    u64ReadCallBytes = read(iFd, pxState->apMemBufs[1],
+    u64ReadCallBytes = read(pxState->iFd, pxState->apMemBufs[1],
 			    u64LeftoverBytesToRead);
 
     if (u64ReadCallBytes != u64LeftoverBytesToRead)
@@ -662,7 +551,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
       sem_destroy(&(pxState->xSemThread));
       sem_destroy(&(pxState->xSemBuffer0));
       sem_destroy(&(pxState->xSemBuffer1));
-      close(iFd);
+      close(pxState->iFd);
       
       return 0;
     }
@@ -681,17 +570,16 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
       sem_destroy(&(pxState->xSemThread));
       sem_destroy(&(pxState->xSemBuffer0));
       sem_destroy(&(pxState->xSemBuffer1));
-      close(iFd);
+      close(pxState->iFd);
       
       return 0;
     }
     pxState->u64NowDataLeftBytes -= u64LeftoverBytesToRead;
   }
-  printf("\nSyncinc...\n\n\n");
-  fsync(iFd);
+  // No sync needed
   DC_PrintProgress(pxState, 1);
   printf("\nDone all reading!\n");
-  close(iFd);
+  close(pxState->iFd);
 
   // Bogus value so thread exits:
   pxState->u8WantBuffer = 100;
@@ -708,15 +596,8 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 
 
 
-
-
-
-
-
-
 int main(int argc, char* argv[])
 {
-  int iFd = -1;
   int iTemp = 0;
   tDcState* pxState;
   char sReadBuf[ADT_GEN_BUF_SIZE] = { 0 };
@@ -734,6 +615,8 @@ int main(int argc, char* argv[])
 
     return 1;
   }
+  memset(pxState, 0, sizeof(*pxState));
+  pxState->iFd = -1;
    
   if (!bDC_GetParams(argc, argv, pxState))
   {
@@ -743,17 +626,18 @@ int main(int argc, char* argv[])
 
     return 1;
   }
-  iFd = open(pxState->sDevice, O_RDONLY);
+  pxState->iFd = open(pxState->sDevice, O_RDONLY);
 
-  if (iFd == -1)
+  if (pxState->iFd == -1)
   {
     printf("Error: Unable to open device %s (are you not root?)\n", pxState->sDevice);
     free(pxState);
     
     return 1;
   }
-  bADT_IdentifyDisk(iFd, sModel, sSerial, NULL, &(pxState->u64DevSizeBytes));
-  close(iFd);
+  bADT_IdentifyDisk(pxState->iFd, sModel, sSerial, NULL, &(pxState->u64DevSizeBytes));
+  close(pxState->iFd);
+  pxState->iFd = -1;
 
   if (iTemp == -1)
   {
