@@ -10,7 +10,7 @@
 #include <pthread.h>
 
 
-#define ADT_DC_VERSION_STR "Diskcont v. 1.02 by Janne Paalijarvi\n"
+#define ADT_DC_VERSION_STR "Diskcont v. 1.5 by Janne Paalijarvi\n"
 #define ADT_DC_RUNNING_NUM_SIZE_BYTES ((uint64_t)(8))
 #define ADT_DC_PROGRESS_UPDATE_INTERVAL ((uint32_t)(5))
 #define ADT_DC_DEFAULT_BUF_SIZE (((uint32_t)(100)) * ADT_BYTES_IN_MEBIBYTE)
@@ -298,6 +298,15 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   {
     printf("Error: Unable to open the device in write mode\n");
 
+    pxState->u8WantBuffer = 100;
+    sem_post(&(pxState->xSemThread));
+    pthread_join(pxState->xAllocatorThread, NULL);
+    free(pxState->apMemBufs[0]);
+    free(pxState->apMemBufs[1]);
+    sem_destroy(&(pxState->xSemThread));
+    sem_destroy(&(pxState->xSemBuffer0));
+    sem_destroy(&(pxState->xSemBuffer1));
+
     return 0;
   }
   printf("Write test starting\n");
@@ -467,6 +476,15 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   {
     printf("Error: Unable to open the device in read mode\n");
 
+    pxState->u8WantBuffer = 100;
+    sem_post(&(pxState->xSemThread));
+    pthread_join(pxState->xAllocatorThread, NULL);
+    free(pxState->apMemBufs[0]);
+    free(pxState->apMemBufs[1]);
+    sem_destroy(&(pxState->xSemThread));
+    sem_destroy(&(pxState->xSemBuffer0));
+    sem_destroy(&(pxState->xSemBuffer1));
+
     return 0;
   }
   printf("Read test starting\n");
@@ -578,7 +596,7 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   }
   // No sync needed
   DC_PrintProgress(pxState, 1);
-  printf("\nDone all reading!\n");
+  printf("\nDone all reading, compare OK!\n");
   close(pxState->iFd);
 
   // Bogus value so thread exits:
