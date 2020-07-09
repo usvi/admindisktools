@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <semaphore.h>
+#include <pthread.h>
 
 
 #define ADT_DC_VERSION_STR "Diskcont v. 1.02 by Janne Paalijarvi\n"
@@ -26,18 +27,12 @@ typedef struct
   char sDevice[ADT_GEN_BUF_SIZE];
   uint64_t u64DevSizeBytes;
   pthread_t xAllocatorThread;
-  sem_t xSemBufferAllocation;
-  sem_t xSemDiskOperation;
+  sem_t xSemThread;
+  sem_t xSemBuffer0;
+  sem_t xSemBuffer1;
   void* apMemBufs[2];
-  
-  struct timeval xStartTime;
-  struct timeval xLastTime;
-  struct timeval xNowTime;
-  uint64_t u64DataLeftBytes;
-  uint64_t u64LastDataLeftBytes;
+  uint8_t u8WantBuffer;
   uint64_t u64CurrNumber;
-  uint64_t u64BufferUsedDataBytes;
-  uint64_t u64BufferUsedNumbers;
   
 } tDcState;
 
@@ -116,17 +111,13 @@ static void DC_PrepareBuffer(tDcState* pxState, void* pBufMem)
   // Staticed here just for efficiency
   static uint64_t u64BytesToWrite;
   static uint64_t u64NumNumbers;
-  static uint64_t u64LeftoverBytes;
   static uint64_t u64WriteNum;
   static void* pMemUpperBound;
   
   memset(pBufMem, 0, pxState->u32BufSize);
   // Pick smaller amount of full buffer and data left
-  u64BytesToWrite = ((pxState->u32BufSize < pxState->u64DataLeftBytes) ?
-		     pxState->u32BufSize :
-		     pxState->u64DataLeftBytes);
+  u64BytesToWrite = pxState->u32BufSize;
   u64NumNumbers = u64BytesToWrite / ADT_DC_RUNNING_NUM_SIZE_BYTES;
-  u64LeftoverBytes = u64BytesToWrite % ADT_DC_RUNNING_NUM_SIZE_BYTES;
   pMemUpperBound = pBufMem + (u64NumNumbers * ADT_DC_RUNNING_NUM_SIZE_BYTES);
   u64WriteNum = pxState->u64CurrNumber;
 
@@ -136,19 +127,14 @@ static void DC_PrepareBuffer(tDcState* pxState, void* pBufMem)
     u64WriteNum++;
     pBufMem += ADT_DC_RUNNING_NUM_SIZE_BYTES;
   }
-  if (u64LeftoverBytes)
-  {
-    memcpy(pBufMem, &u64WriteNum, u64LeftoverBytes);
-    u64WriteNum++;
-  }
-  pxState->u64BufferUsedDataBytes = u64BytesToWrite;
-  pxState->u64BufferUsedNumbers = u64WriteNum - pxState->u64CurrNumber;
+  pxState->u64CurrNumber += u64NumNumbers;
 }
 
 
 
 static void DC_PrintProgress(tDcState* pxState)
 {
+  /*
   // Staticed here just for efficiency
   static uint32_t u32TimeElapsed;
   static uint32_t u32Secs;
@@ -193,12 +179,14 @@ static void DC_PrintProgress(tDcState* pxState)
 	 u64PassedBytes, pxState->u64DevSizeBytes, fProgress,
 	 u32Hours, u32Mins, u32Secs, fNowSpeedMbPerSeconds, fAverageSpeedMbPerSeconds);
   fflush(stdout);
+  */
 }
 
 
 
 static uint8_t bDC_ReadTest(tDcState* pxState)
 {
+  /*
   void* pCompBufMem = NULL;
   void* pReadBufMem = NULL;
   int iFd = -1;
@@ -297,6 +285,37 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
   free(pCompBufMem);
   free(pReadBufMem);
   close(iFd);
+  */
+  return 1;
+}
+
+
+
+static uint8_t bDC_BufferAllocator(void* pParams)
+{
+  uint8_t u8RetVal = 0;
+  tDcState* pxState = (tDcState*)pParams;
+  
+  while (1)
+  {
+    sem_wait(&(pxState->xSemThread));
+
+    if (pxState->u8WantBuffer == 0)
+    {
+      DC_PrepareBuffer(pxState, pxState->apMemBufs[0]);
+      sem_post(&(pxState->xSemBuffer0));
+    }
+    else if (pxState->u8WantBuffer == 1)
+    {
+      DC_PrepareBuffer(pxState, pxState->apMemBufs[1]);
+      sem_post(&(pxState->xSemBuffer1));
+    }
+    else
+    {
+      u8RetVal = 0;
+      pthread_exit(&u8RetVal);
+    }
+  }
 
   return 1;
 }
@@ -306,26 +325,47 @@ static uint8_t bDC_ReadTest(tDcState* pxState)
 static uint8_t bDC_WriteTest(tDcState* pxState)
 {
   uint64_t u64WrittenCallBytes = 0;
-  void* pBufMem = NULL;
+  uint64_t u64FullBuffersToWrite = 0;
+  uint64_t u64LeftoverBytesToWrite = 0;
+  uint64_t u64WriteBufferNum = 0;
   int iFd = -1;
-  pxState->u64DataLeftBytes = pxState->u64DevSizeBytes;
-  pxState->u64LastDataLeftBytes = 0;
-  pxState->u64CurrNumber = 0;
-  pxState->u64BufferUsedDataBytes = 0;
-  pxState->u64BufferUsedNumbers = 0;
 
-  gettimeofday(&(pxState->xStartTime), NULL);
-  gettimeofday(&(pxState->xLastTime), NULL);
-  pxState->xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1); // Ensure at least one print
-  
-  pBufMem = malloc(pxState->u32BufSize);
+  pthread_create(&(pxState->xAllocatorThread), NULL,
+		 (void*)bDC_BufferAllocator, pxState);
 
-  if (pBufMem == NULL)
+  // Need to allocate both buffers
+  pxState->apMemBufs[0] = malloc(pxState->u32BufSize);
+  pxState->apMemBufs[1] = malloc(pxState->u32BufSize);
+
+  if ((pxState->apMemBufs[0] == NULL) ||
+      (pxState->apMemBufs[1] == NULL))
   {
     printf("Error: Malloc failed\n");
+    free(pxState->apMemBufs[0]);
+    free(pxState->apMemBufs[1]);
     
     return 0;
   }
+  // Now it is time to set counters
+  pxState->u64CurrNumber = 0;
+
+  // Thread is now waiting instructions
+  pxState->u8WantBuffer = 0;
+  // We wake another thread and sleep ourselves
+  sem_post(&(pxState->xSemThread));
+  sem_wait(&(pxState->xSemBuffer0));
+  // Ok, allocator thread has operated on buf 0.
+  // In order for the writer loop
+  // to work as expected, buffer sem needs additional post.
+  sem_post(&(pxState->xSemBuffer0));
+
+  // Figure out how many full buffers and leftover bytes to write
+  u64FullBuffersToWrite = pxState->u64DevSizeBytes / pxState->u32BufSize;
+  u64LeftoverBytesToWrite = pxState->u64DevSizeBytes - (u64FullBuffersToWrite * pxState->u32BufSize);
+
+  printf("Writing %" PRIu64 " buffers and %" PRIu64 " leftover bytes\n",
+	 u64FullBuffersToWrite, u64LeftoverBytesToWrite);
+
   // FIXME: Correct additional flags
   //iFd = open(pxState->sDevice, O_WRONLY | O_SYNC);
   iFd = open(pxState->sDevice, O_WRONLY);
@@ -333,7 +373,6 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   if (iFd == -1)
   {
     printf("Error: Unable to open the device in write mode\n");
-    free(pBufMem);
 
     return 0;
   }
@@ -342,41 +381,62 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   printf("\n\n");
 
   // In loop prepare the buffer and write
-  while (pxState->u64DataLeftBytes)
+  for (u64WriteBufferNum = 0; u64WriteBufferNum < u64FullBuffersToWrite; u64WriteBufferNum++)
   {
-    DC_PrepareBuffer(pxState, pBufMem);
-    u64WrittenCallBytes = write(iFd, pBufMem, pxState->u64BufferUsedDataBytes);
-  
-    if (u64WrittenCallBytes != pxState->u64BufferUsedDataBytes)
+    if (pxState->u8WantBuffer == 0)
     {
-      printf("Error: Problem writing bytes %" PRIu64 "\n", (pxState->u64DevSizeBytes - pxState->u64DataLeftBytes));
-      free(pBufMem);
-      close(iFd);
-    
-      return 0;
+      pxState->u8WantBuffer = 1;
+      // Let thread allocate at the same time we write:
+      sem_post(&(pxState->xSemThread));
+      sem_wait(&(pxState->xSemBuffer0));
+      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[0], pxState->u32BufSize);
     }
-    pxState->u64DataLeftBytes -= pxState->u64BufferUsedDataBytes;
-    pxState->u64CurrNumber += pxState->u64BufferUsedNumbers;
-
-    // Write where we are, if interval seconds passed
-    gettimeofday(&(pxState->xNowTime), NULL);
-
-    if ((pxState->xLastTime.tv_sec + ADT_DC_PROGRESS_UPDATE_INTERVAL) < pxState->xNowTime.tv_sec)
+    else // pxState->u8WantBuffer == 1
     {
-      DC_PrintProgress(pxState);
-      pxState->u64LastDataLeftBytes = pxState->u64DataLeftBytes;
-      pxState->xLastTime = pxState->xNowTime;
+      pxState->u8WantBuffer = 0;
+      // Let thread allocate at the same time we write:
+      sem_post(&(pxState->xSemThread));
+      sem_wait(&(pxState->xSemBuffer1));
+      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[1], pxState->u32BufSize);
+    }
+    if (u64WrittenCallBytes != pxState->u32BufSize)
+    {
+      printf("Error: Problem writing bytes %" PRIu64 "\n",
+	     pxState->u32BufSize * u64WriteBufferNum);
     }
   }
-  gettimeofday(&(pxState->xNowTime), NULL);
-  DC_PrintProgress(pxState);
+  if (u64LeftoverBytesToWrite)
+  {
+    if (pxState->u8WantBuffer == 0)
+    {
+      sem_wait(&(pxState->xSemBuffer0));
+      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[0],
+				  u64LeftoverBytesToWrite);
+    }
+    else // pxState->u8WantBuffer == 1
+    {
+      sem_wait(&(pxState->xSemBuffer1));
+      u64WrittenCallBytes = write(iFd, pxState->apMemBufs[1],
+				  u64LeftoverBytesToWrite);
+    }
+  }
+
+
+
+  
   printf("\nSyncinc...\n");
   fsync(iFd);
   printf("Done all writing!\n");
-  
-  free(pBufMem);
   close(iFd);
 
+  // Bogus value so thread exists:
+  pxState->u8WantBuffer = 100;
+  sem_post(&(pxState->xSemThread));
+  pthread_join(pxState->xAllocatorThread, NULL);
+  free(pxState->apMemBufs[0]);
+  free(pxState->apMemBufs[1]);
+  printf("Finish\n");
+  
   return 1;
 }
 
@@ -402,8 +462,9 @@ int main(int argc, char* argv[])
 
     return 1;
   }
-  if ((sem_init(&(pxState->xSemBufferAllocation), 0, 0) != 0) ||
-      (sem_init(&(pxState->xSemDiskOperation), 0, 0) != 0))
+  if ((sem_init(&(pxState->xSemThread), 0, 0) != 0) ||
+      (sem_init(&(pxState->xSemBuffer0), 0, 0) != 0) ||
+      (sem_init(&(pxState->xSemBuffer1), 0, 0) != 0))
   {
     printf("Failed to initialize semaphores\n");
     free(pxState);
