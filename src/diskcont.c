@@ -354,7 +354,7 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   // We wake another thread and sleep ourselves
   sem_post(&(pxState->xSemThread));
   sem_wait(&(pxState->xSemBuffer0));
-  // Ok, allocator thread has operated on buf 0.
+  // Ok, allocator thread has allocated buf 0.
   // In order for the writer loop
   // to work as expected, buffer sem needs additional post.
   sem_post(&(pxState->xSemBuffer0));
@@ -403,6 +403,15 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
     {
       printf("Error: Problem writing bytes %" PRIu64 "\n",
 	     pxState->u32BufSize * u64WriteBufferNum);
+
+      pxState->u8WantBuffer = 100;
+      sem_post(&(pxState->xSemThread));
+      pthread_join(pxState->xAllocatorThread, NULL);
+      free(pxState->apMemBufs[0]);
+      free(pxState->apMemBufs[1]);
+      close(iFd);
+
+      return 0;
     }
   }
   if (u64LeftoverBytesToWrite)
@@ -418,6 +427,20 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
       sem_wait(&(pxState->xSemBuffer1));
       u64WrittenCallBytes = write(iFd, pxState->apMemBufs[1],
 				  u64LeftoverBytesToWrite);
+    }
+    if (u64WrittenCallBytes != u64LeftoverBytesToWrite)
+    {
+      printf("Error: Problem writing bytes %" PRIu64 "\n",
+	     pxState->u32BufSize * u64WriteBufferNum);
+
+      pxState->u8WantBuffer = 100;
+      sem_post(&(pxState->xSemThread));
+      pthread_join(pxState->xAllocatorThread, NULL);
+      free(pxState->apMemBufs[0]);
+      free(pxState->apMemBufs[1]);
+      close(iFd);
+
+      return 0;
     }
   }
 
