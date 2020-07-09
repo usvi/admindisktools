@@ -33,6 +33,13 @@ typedef struct
   void* apMemBufs[2];
   uint8_t u8WantBuffer;
   uint64_t u64CurrNumber;
+
+  // Rest used for status printing:
+  struct timeval xStartTime;
+  struct timeval xLastTime;
+  struct timeval xNowTime;
+  uint64_t u64NowDataLeftBytes;
+  uint64_t u64LastDataLeftBytes;
   
 } tDcState;
 
@@ -132,8 +139,65 @@ static void DC_PrepareBuffer(tDcState* pxState, void* pBufMem)
 
 
 
-static void DC_PrintProgress(tDcState* pxState)
+static void DC_PrintProgress(tDcState* pxState, uint8_t u8ForcePrint)
 {
+  // Staticed here just for efficiency
+  static uint32_t u32TimeElapsed;
+  static uint32_t u32Secs;
+  static uint32_t u32Mins;
+  static uint32_t u32Hours;
+  static uint64_t u64PassedBytes;
+  static float fProgress;
+  static float fTimeElapsedFine;
+  static float fNowSpeedMbPerSeconds;
+  static float fAverageSpeedMbPerSeconds;
+
+  gettimeofday(&(pxState->xNowTime), NULL);
+
+  // Preparations to ensure 5 seconds passed:
+  pxState->xNowTime.tv_sec -= 5;
+  
+  // Do something only if eligible
+  if (u8ForcePrint || timercmp(&(pxState->xLastTime), &(pxState->xNowTime), <))
+  {
+    // Fix the 5 seconds stuff
+    pxState->xNowTime.tv_sec += 5;
+
+    // Calculate needed variables
+    u32TimeElapsed = pxState->xNowTime.tv_sec - pxState->xStartTime.tv_sec;
+    u32Secs = u32TimeElapsed % 60;
+    u32TimeElapsed -= u32Secs;
+    u32Mins = (u32TimeElapsed % 3600) / 60;
+    u32TimeElapsed -= u32Mins * 60;
+    u32Hours = u32TimeElapsed / 3600;
+    u64PassedBytes = pxState->u64DevSizeBytes - pxState->u64NowDataLeftBytes;
+    fProgress = 100.0 * (1.0 * u64PassedBytes) / (1.0 * pxState->u64DevSizeBytes);
+    
+    fNowSpeedMbPerSeconds = 0.0;
+    fAverageSpeedMbPerSeconds = 0.0;
+    
+    // First calculate current speed
+    fTimeElapsedFine = (1.0 * (pxState->xNowTime.tv_sec - pxState->xLastTime.tv_sec)) +
+      (0.000001 * (pxState->xNowTime.tv_usec - pxState->xLastTime.tv_usec));
+    fNowSpeedMbPerSeconds = (1.0 * (pxState->u64LastDataLeftBytes - pxState->u64NowDataLeftBytes)) /
+      ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+    // And now we calculate average speed
+    fTimeElapsedFine = (1.0 * (pxState->xNowTime.tv_sec - pxState->xStartTime.tv_sec)) +
+      (0.000001 * (pxState->xNowTime.tv_usec - pxState->xStartTime.tv_usec));
+    fAverageSpeedMbPerSeconds = (1.0 * (pxState->u64DevSizeBytes - pxState->u64NowDataLeftBytes)) /
+      ((1.0 * ADT_BYTES_IN_MEBIBYTE) * fTimeElapsedFine);
+
+    printf("\x1b[A" "\x1b[A" "\r%" PRIu64 "/%" PRIu64 " bytes, %02.2f%% done. \n"
+	   "%uh %02um %02us elapsed. \n"
+	   "Speed now: %.2f MiB/s  Average: %.2f MiB/s       ",
+	   u64PassedBytes, pxState->u64DevSizeBytes, fProgress,
+	   u32Hours, u32Mins, u32Secs, fNowSpeedMbPerSeconds, fAverageSpeedMbPerSeconds);
+    fflush(stdout);
+
+    // Now that this has been resolved, make current accounting values old values
+    pxState->xLastTime = pxState->xNowTime;
+    pxState->u64LastDataLeftBytes = pxState->u64NowDataLeftBytes;
+  }
   /*
   // Staticed here just for efficiency
   static uint32_t u32TimeElapsed;
@@ -348,6 +412,8 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   }
   // Now it is time to set counters
   pxState->u64CurrNumber = 0;
+  pxState->u64LastDataLeftBytes = pxState->u64DevSizeBytes;
+  pxState->u64NowDataLeftBytes = pxState->u64DevSizeBytes;
 
   // Thread is now waiting instructions
   pxState->u8WantBuffer = 0;
@@ -363,9 +429,6 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   u64FullBuffersToWrite = pxState->u64DevSizeBytes / pxState->u32BufSize;
   u64LeftoverBytesToWrite = pxState->u64DevSizeBytes - (u64FullBuffersToWrite * pxState->u32BufSize);
 
-  printf("Writing %" PRIu64 " buffers and %" PRIu64 " leftover bytes\n",
-	 u64FullBuffersToWrite, u64LeftoverBytesToWrite);
-
   // FIXME: Correct additional flags
   //iFd = open(pxState->sDevice, O_WRONLY | O_SYNC);
   iFd = open(pxState->sDevice, O_WRONLY);
@@ -380,6 +443,12 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   // Write couple of newlines in sync to the prevline sequences
   printf("\n\n");
 
+  // Make initial zero print a bit earlier:
+  gettimeofday(&(pxState->xLastTime), NULL);
+  pxState->xLastTime.tv_sec -= (ADT_DC_PROGRESS_UPDATE_INTERVAL + 1);
+  // Actual start of routine loop
+  gettimeofday(&(pxState->xStartTime), NULL);
+  
   // In loop prepare the buffer and write
   for (u64WriteBufferNum = 0; u64WriteBufferNum < u64FullBuffersToWrite; u64WriteBufferNum++)
   {
@@ -413,6 +482,8 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
       return 0;
     }
+    pxState->u64NowDataLeftBytes -= pxState->u32BufSize;
+    DC_PrintProgress(pxState, 0);
   }
   if (u64LeftoverBytesToWrite)
   {
@@ -442,14 +513,16 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
 
       return 0;
     }
+    pxState->u64NowDataLeftBytes -= u64LeftoverBytesToWrite;
   }
 
 
 
   
-  printf("\nSyncinc...\n");
+  printf("\nSyncinc...\n\n\n");
   fsync(iFd);
-  printf("Done all writing!\n");
+  DC_PrintProgress(pxState, 1);
+  printf("\nDone all writing!\n");
   close(iFd);
 
   // Bogus value so thread exists:
@@ -458,7 +531,6 @@ static uint8_t bDC_WriteTest(tDcState* pxState)
   pthread_join(pxState->xAllocatorThread, NULL);
   free(pxState->apMemBufs[0]);
   free(pxState->apMemBufs[1]);
-  printf("Finish\n");
   
   return 1;
 }
